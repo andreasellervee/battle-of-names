@@ -1,0 +1,32 @@
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+vite.config.ts.timestamp-*
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# Editor caches
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage / tests
+coverage/
+.nyc_output/
+
+# Misc build artifacts
+*.log
+*.tmp
+*.temp
+
