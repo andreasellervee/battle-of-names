@@ -186,14 +186,37 @@ if (!appRoot) {
   throw new Error("App root element not found");
 }
 
+// The semantic hero, nav, and sections help crawlers understand the narrative of the experience.
 appRoot.innerHTML = `
   <div class="panel">
-    <header class="header">
-      <h1>Battle of Names</h1>
+    <header class="hero" aria-labelledby="battleTitle">
+      <div class="hero__content">
+        <p class="hero__eyebrow">Arcade name duels</p>
+        <h1 id="battleTitle">Battle of Names</h1>
+        <p class="hero__lead">
+          Enter contenders, choose your spawn, and watch the animated arena resolve a winner with neon sparks, shrinking
+          zones, and a dramatic elimination log.
+        </p>
+        <nav class="hero__nav" aria-label="Quick navigation">
+          <a href="#inputPanel">Prep contenders</a>
+          <a href="#battleCanvas">Watch the arena</a>
+          <a href="#resultsPanel">Read the log</a>
+        </nav>
+      </div>
+      <figure class="hero__visual">
+        <img
+          src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80"
+          alt="Neon arena floor lit by glowing combatants and trails"
+          width="420"
+          height="280"
+          loading="lazy"
+        />
+        <figcaption>Pulse-lit arena energy matches the cinematic elimination feel.</figcaption>
+      </figure>
     </header>
-    <div class="layout">
-      <aside class="sidebar">
-        <section class="input-panel">
+    <main class="layout panel-main" aria-label="Name picker battle interface">
+      <article class="controls-article sidebar">
+        <section class="input-panel" id="inputPanel">
           <label class="input-label" for="namesInput">Enter contenders</label>
           <textarea id="namesInput" placeholder="One name per line..."></textarea>
           <div class="controls">
@@ -209,22 +232,24 @@ appRoot.innerHTML = `
               </select>
             </label>
           </div>
-          <div class="status-bar" id="statusBar"></div>
+          <div class="status-bar" id="statusBar" aria-live="polite"></div>
         </section>
-        <section class="scoreboard-panel">
-          <h2 class="scoreboard-title">Arena Roster</h2>
+        <section class="scoreboard-panel" aria-labelledby="scoreboardTitle">
+          <h2 id="scoreboardTitle" class="scoreboard-title">Arena Roster</h2>
           <ul id="scoreboardActive" class="scoreboard scoreboard--active"></ul>
           <div id="scoreboardFallenSection" class="scoreboard-fallen" hidden>
             <h3 class="scoreboard-fallen__title">Fallen</h3>
             <ul id="scoreboardFallen" class="scoreboard scoreboard--fallen"></ul>
           </div>
         </section>
-      </aside>
-      <main class="main-column">
-        <div class="canvas-wrapper">
-          <canvas id="battleCanvas"></canvas>
-          <div id="overlayText" class="overlay-text"></div>
-        </div>
+      </article>
+      <article class="arena-article main-column">
+        <section class="canvas-panel" aria-label="Animated battle arena">
+          <div class="canvas-wrapper">
+            <canvas id="battleCanvas"></canvas>
+            <div id="overlayText" class="overlay-text"></div>
+          </div>
+        </section>
         <section class="results-panel results-panel--empty" id="resultsPanel">
           <h2>Battle Log</h2>
           <div class="winner-banner" id="winnerBanner"></div>
@@ -233,9 +258,17 @@ appRoot.innerHTML = `
           </div>
           <ol id="resultsList"></ol>
         </section>
-      </main>
-    </div>
-    <footer class="flavor-bar">💬 Tip: "Legends say only one name survives the circle..."</footer>
+      </article>
+    </main>
+    <footer class="flavor-bar">
+      💬 Tip: "Legends say only one name survives the circle..."
+      <p class="flavor-disclaimer">
+        Built fully with Artificial Intelligence — check the open-source repo
+        <a href="https://github.com/andreasellervee/battle-of-names" target="_blank" rel="noopener noreferrer"
+          >here</a
+        >.
+      </p>
+    </footer>
   </div>
 `;
 
