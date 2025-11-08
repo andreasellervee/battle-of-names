@@ -1520,8 +1520,11 @@ class BattleGame {
     handleGradient.addColorStop(1, "rgba(120, 80, 30, 0.95)");
     context.fillStyle = handleGradient;
     context.strokeStyle = "rgba(40, 12, 4, 0.5)";
-    if ("roundRect" in context) {
-      (context as any).roundRect(-handleWidth / 2, -handleLength * 0.3, handleWidth, handleLength, handleWidth / 2);
+    const contextWithRoundRect = context as CanvasRenderingContext2D & {
+      roundRect?: CanvasRenderingContext2D["roundRect"];
+    };
+    if (typeof contextWithRoundRect.roundRect === "function") {
+      contextWithRoundRect.roundRect(-handleWidth / 2, -handleLength * 0.3, handleWidth, handleLength, handleWidth / 2);
     } else {
       context.beginPath();
       context.rect(-handleWidth / 2, -handleLength * 0.3, handleWidth, handleLength);
