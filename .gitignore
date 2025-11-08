@@ -1,6 +1,6 @@
 # Node / Vite
 node_modules/
-#dist/
+dist/
 dist-ssr/
 vite.config.ts.timestamp-*
 
