@@ -964,6 +964,11 @@ class BattleGame {
         fighter.vx -= nx * MAX_SPEED * pull * dt;
         fighter.vy -= ny * MAX_SPEED * pull * dt;
 
+      }
+
+      const outsideFraction = this.computeArenaOutsideFraction(dist, fighter.radius);
+      const shouldDamageOutside = outsideFraction >= 0.1;
+      if (shouldDamageOutside) {
         if (fighter.outsideSince === null) {
           fighter.outsideSince = now;
         } else if (now - fighter.outsideSince >= OUTSIDE_GRACE_MS) {
@@ -973,6 +978,45 @@ class BattleGame {
         fighter.outsideSince = null;
       }
     }
+  }
+
+  private computeArenaOutsideFraction(dist: number, fighterRadius: number) {
+    const arenaRadius = this.arena.radius;
+    if (arenaRadius <= 0 || fighterRadius <= 0) {
+      return 0;
+    }
+    const fullyInsideThreshold = arenaRadius - fighterRadius;
+    if (fullyInsideThreshold >= 0 && dist <= fullyInsideThreshold) {
+      return 0;
+    }
+    if (dist >= arenaRadius + fighterRadius) {
+      return 1;
+    }
+    const safeDist = Math.max(1e-6, dist);
+    const r = fighterRadius;
+    const R = arenaRadius;
+    const rSq = r * r;
+    const RSq = R * R;
+    const cosTheta = Math.min(1, Math.max(-1, (safeDist * safeDist + rSq - RSq) / (2 * safeDist * r)));
+    const cosPhi = Math.min(1, Math.max(-1, (safeDist * safeDist + RSq - rSq) / (2 * safeDist * R)));
+    const theta = Math.acos(cosTheta);
+    const phi = Math.acos(cosPhi);
+    const overlap =
+      rSq * theta +
+      RSq * phi -
+      0.5 *
+        Math.sqrt(
+          Math.max(
+            0,
+            (-safeDist + r + R) * (safeDist + r - R) * (safeDist - r + R) * (safeDist + r + R)
+          )
+        );
+    const fighterArea = Math.PI * rSq;
+    if (fighterArea <= 0) {
+      return 0;
+    }
+    const fractionInside = Math.min(1, Math.max(0, overlap / fighterArea));
+    return 1 - fractionInside;
   }
 
   private detectCollisions(now: number) {
@@ -1330,6 +1374,20 @@ class BattleGame {
     const size = fighter.radius * 2;
     context.globalAlpha = fighter.alive ? 1 : 0.32;
     context.drawImage(fighter.sprite, -size / 2, -size / 2, size, size);
+
+    const outsideSince = fighter.outsideSince;
+    if (fighter.alive && outsideSince !== null && timeMs >= outsideSince) {
+      const outsideElapsed = timeMs - outsideSince;
+      const progress = Math.min(1, Math.max(0, outsideElapsed / OUTSIDE_GRACE_MS));
+      const pulse = (Math.sin(timeMs * 0.016 + fighter.id * 1.1) + 1) / 2;
+      const alpha = Math.min(0.72, 0.12 + progress * 0.4 + pulse * 0.35);
+      context.save();
+      context.fillStyle = `rgba(255, 120, 90, ${alpha.toFixed(3)})`;
+      context.beginPath();
+      context.arc(0, 0, fighter.radius * 0.98, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+    }
 
     if (fighter.alive && timeMs < fighter.hitOverlayUntil) {
       const remaining = fighter.hitOverlayUntil - timeMs;
