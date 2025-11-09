@@ -1,4 +1,5 @@
 import tinycolor from "tinycolor2";
+import { predefinedFights } from "./data/predefinedFights";
 
 type GamePhase = "idle" | "countdown" | "running" | "finished";
 type SpawnMode = "random" | "even" | "clusters" | "center" | "storm";
@@ -180,6 +181,13 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const fightThemeOptions = [
+  `<option value="">Choose a theme (optional)</option>`,
+  ...Object.keys(predefinedFights).map(
+    (theme) => `<option value="${escapeHtml(theme)}">${escapeHtml(theme)}</option>`
+  )
+].join("");
+
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 
 if (!appRoot) {
@@ -217,6 +225,12 @@ appRoot.innerHTML = `
     <main class="layout panel-main" aria-label="Name picker battle interface">
       <article class="controls-article sidebar">
         <section class="input-panel" id="inputPanel">
+          <label class="select-label" for="fightThemeSelect">
+            Select Fight Theme (optional)
+            <select id="fightThemeSelect">
+              ${fightThemeOptions}
+            </select>
+          </label>
           <label class="input-label" for="namesInput">Enter contenders</label>
           <textarea id="namesInput" placeholder="One name per line..."></textarea>
           <div class="controls">
@@ -225,7 +239,7 @@ appRoot.innerHTML = `
               Spawn Points
               <select id="spawnMode">
                 <option value="random" data-description="${SPAWN_MODE_DESCRIPTIONS.random}">Random</option>
-                <option value="even" data-description="${SPAWN_MODE_DESCRIPTIONS.even}">Even Spread</option>
+                <option value="even" data-description="${SPAWN_MODE_DESCRIPTIONS.even}" selected>Even Spread</option>
                 <option value="clusters" data-description="${SPAWN_MODE_DESCRIPTIONS.clusters}">Clustered Teams</option>
                 <option value="center" data-description="${SPAWN_MODE_DESCRIPTIONS.center}">Center Drop</option>
                 <option value="storm" data-description="${SPAWN_MODE_DESCRIPTIONS.storm}">Storm Spawn</option>
@@ -275,6 +289,7 @@ appRoot.innerHTML = `
 const textarea = document.querySelector<HTMLTextAreaElement>("#namesInput")!;
 const startButton = document.querySelector<HTMLButtonElement>("#startBtn")!;
 const spawnModeSelect = document.querySelector<HTMLSelectElement>("#spawnMode")!;
+const fightThemeSelect = document.querySelector<HTMLSelectElement>("#fightThemeSelect")!;
 const statusBar = document.querySelector<HTMLDivElement>("#statusBar")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#battleCanvas")!;
 const overlayText = document.querySelector<HTMLDivElement>("#overlayText")!;
@@ -308,6 +323,34 @@ Array.from(spawnModeSelect.options).forEach((option) => {
 
 applySpawnModeTooltip();
 spawnModeSelect.addEventListener("change", applySpawnModeTooltip);
+
+let isApplyingTheme = false;
+
+fightThemeSelect.addEventListener("change", () => {
+  const selectedTheme = fightThemeSelect.value;
+  if (!selectedTheme) {
+    statusBar.textContent = "Custom fight ready — add contenders or pick a theme.";
+    return;
+  }
+  const names = predefinedFights[selectedTheme];
+  if (!names) {
+    return;
+  }
+  isApplyingTheme = true;
+  textarea.value = names.join("\n");
+  isApplyingTheme = false;
+  statusBar.textContent = `Loaded the "${selectedTheme}" lineup.`;
+});
+
+textarea.addEventListener("input", () => {
+  if (isApplyingTheme) {
+    return;
+  }
+  if (fightThemeSelect.value) {
+    fightThemeSelect.value = "";
+    statusBar.textContent = "Custom fight ready — adjust the contenders above.";
+  }
+});
 
 interface ArenaState {
   radius: number;
