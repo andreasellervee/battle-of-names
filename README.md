@@ -2,6 +2,8 @@
 
 An arcade-style battle simulator that turns a plain list of names into a spellbinding arena brawl. Paste contenders, press **Start Battle**, and watch enchanted fighters duel it out with trails, sparks, and dramatic eliminations until only one name remains.
 
+https://battleofnames.com
+
 ## Highlights
 - **Instant setup** – enter names in the left panel, choose a spawn pattern, and launch the fight with one click.
 - **Cinematic arena** – animated canvas with shrinking safe zone, pulse effects, and impact flashes.
