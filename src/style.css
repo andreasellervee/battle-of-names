@@ -343,6 +343,7 @@ button:not(:disabled):hover {
 }
 
 .scoreboard-entry {
+  position: relative;
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-rows: auto auto;
@@ -476,58 +477,12 @@ button:not(:disabled):hover {
   color: rgba(220, 200, 255, 0.7);
 }
 
-.scoreboard-entry--pulse-hit {
-  animation: scoreboard-pulse-hit 0.4s ease;
-}
-
-.scoreboard-entry--pulse-damage {
-  animation: scoreboard-pulse-damage 0.4s ease;
-}
-
-.scoreboard-entry--pulse-eliminated {
-  animation: scoreboard-pulse-eliminated 0.6s ease;
-}
-
-@keyframes scoreboard-pulse-hit {
-  0% {
-    box-shadow: 0 0 0 rgba(0, 255, 180, 0.6);
-    transform: translateY(0);
-  }
-  40% {
-    box-shadow: 0 0 22px rgba(0, 255, 180, 0.5);
-    transform: translateY(-2px);
-  }
-  100% {
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-    transform: translateY(0);
-  }
-}
-
-@keyframes scoreboard-pulse-damage {
-  0% {
-    box-shadow: 0 0 0 rgba(255, 70, 110, 0.6);
-    transform: translateY(0);
-  }
-  50% {
-    box-shadow: 0 0 22px rgba(255, 70, 110, 0.5);
-    transform: translateY(-1px);
-  }
-  100% {
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-    transform: translateY(0);
-  }
-}
-
-@keyframes scoreboard-pulse-eliminated {
-  0% {
-    opacity: 1;
-  }
-  40% {
-    opacity: 0.2;
-  }
-  100% {
-    opacity: 0.35;
-  }
+.scoreboard-entry__feedback {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
 }
 
 @keyframes scoreboard-winner-glow {
@@ -573,16 +528,24 @@ button:not(:disabled):hover {
   pointer-events: none;
 }
 
-.canvas-wrapper::after {
-  content: "";
-  position: absolute;
-  inset: -40%;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg fill='%23ffd78a' fill-opacity='0.14'%3E%3Ccircle cx='10' cy='10' r='2'/%3E%3Ccircle cx='80' cy='40' r='1.5'/%3E%3Ccircle cx='130' cy='90' r='2.2'/%3E%3Ccircle cx='30' cy='120' r='1.8'/%3E%3Ccircle cx='110' cy='20' r='1.4'/%3E%3C/g%3E%3C/svg%3E")
-    repeat;
-  animation: arena-motes 18s linear infinite;
+/* Surface detail is cached by the canvas renderer; weather stays aligned to gameplay. */
+.arena-legend {
+  padding: 12px 6px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  color: #c6bed2;
+  font: 11px system-ui, sans-serif;
   pointer-events: none;
-  opacity: 0.5;
 }
+.arena-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.arena-legend i { width: 8px; height: 8px; border-radius: 50%; }
+.arena-legend-safe { background: #b9a486; }
+.arena-legend-storm { background: #8c79ba; box-shadow: 0 0 7px #8c79ba66; }
+.arena-legend-warning { margin-left: auto; color: #a89bb8; }
+.visual-preview .arena-legend { display: none; }
+@media (max-width: 500px) { .arena-legend-warning { display: none !important; } }
 
 @media (max-width: 700px) {
   .canvas-wrapper {
@@ -771,4 +734,59 @@ canvas {
   100% {
     transform: translate3d(0, -6%, 0) rotate(360deg);
   }
+}
+
+/* The visual identity page embeds the actual arena renderer as a focused specimen. */
+.visual-preview,
+.visual-preview body,
+.visual-preview #app,
+.visual-preview .panel,
+.visual-preview .panel-main,
+.visual-preview .arena-article,
+.visual-preview .canvas-panel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.visual-preview body {
+  display: block;
+  margin: 0;
+  overflow: hidden;
+}
+
+.visual-preview #app,
+.visual-preview .panel {
+  padding: 0;
+}
+
+.visual-preview .panel {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.visual-preview .panel::before,
+.visual-preview .hero,
+.visual-preview .sidebar,
+.visual-preview .results-panel,
+.visual-preview .flavor-bar {
+  display: none;
+}
+
+.visual-preview .panel-main,
+.visual-preview .arena-article {
+  display: block;
+}
+
+.visual-preview .canvas-wrapper {
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }

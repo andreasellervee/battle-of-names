@@ -6,13 +6,21 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predev": "node scripts/prepare-character-assets.mjs",
+    "prebuild": "node scripts/prepare-character-assets.mjs",
+    "assets:build": "node scripts/prepare-character-assets.mjs --force",
+    "assets:check": "node scripts/prepare-character-assets.mjs --check"
   },
   "dependencies": {
     "tinycolor2": "^1.6.0"
   },
   "devDependencies": {
-    "typescript": "^5.3.3",
-    "vite": "^6.4.1"
+    "@types/tinycolor2": "^1.4.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  },
+  "overrides": {
+    "fsevents": "file:./vendor/fsevents-disabled"
   }
 }
