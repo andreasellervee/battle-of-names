@@ -6,6 +6,10 @@ https://battleofnames.com
 
 Open `/visual-identity/` on the dev server to see the game's current colors, typography, surfaces, fighter palette, and live arena artwork in one place.
 
+## Development history
+
+The [development journal](docs/progression/README.md) follows the project from its [GPT-5-Codex beginnings in 2025](docs/progression/v1-gpt-5-codex.md) to the [Astra design and performance work in September 2026](docs/progression/v2-astra.md). The [initial requirements](specs/requirements-v1.md) are preserved separately.
+
 ## Highlights
 - **Instant setup** – enter names in the left panel, choose a spawn pattern, and launch the fight with one click.
 - **Illustrated Vikings** – reusable body, axe, and shield sprites with twelve shirt colours and matching roster accents. Cloth variants are generated ahead of time as WebP sprites; battles load 256 px artwork and the workshop loads 512 px artwork.
