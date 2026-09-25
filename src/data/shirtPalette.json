@@ -1,0 +1,74 @@
+[
+  {
+    "id": "teal",
+    "name": "Fjord teal",
+    "color": "#008c9e",
+    "accent": "#2dd4bf"
+  },
+  {
+    "id": "ruby",
+    "name": "Ruby red",
+    "color": "#bf294c",
+    "accent": "#fb7185"
+  },
+  {
+    "id": "gold",
+    "name": "Sun gold",
+    "color": "#ce9423",
+    "accent": "#fbbf24"
+  },
+  {
+    "id": "blue",
+    "name": "Cobalt blue",
+    "color": "#245edb",
+    "accent": "#60a5fa"
+  },
+  {
+    "id": "violet",
+    "name": "Royal violet",
+    "color": "#873ccb",
+    "accent": "#c084fc"
+  },
+  {
+    "id": "green",
+    "name": "Forest green",
+    "color": "#348a42",
+    "accent": "#65d77b"
+  },
+  {
+    "id": "orange",
+    "name": "Ember orange",
+    "color": "#d55f1e",
+    "accent": "#fb923c"
+  },
+  {
+    "id": "pink",
+    "name": "Heather pink",
+    "color": "#ce408a",
+    "accent": "#f472b6"
+  },
+  {
+    "id": "ice",
+    "name": "Glacier blue",
+    "color": "#7dc7df",
+    "accent": "#a5e5f5"
+  },
+  {
+    "id": "lime",
+    "name": "Moss lime",
+    "color": "#a3b536",
+    "accent": "#c4d856"
+  },
+  {
+    "id": "ivory",
+    "name": "Bone ivory",
+    "color": "#d9d2b9",
+    "accent": "#f5edd5"
+  },
+  {
+    "id": "slate",
+    "name": "Iron grey",
+    "color": "#575f6c",
+    "accent": "#a5afbf"
+  }
+]

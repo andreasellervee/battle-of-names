@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Visual Identity | Battle of Names</title>
+    <meta name="description" content="A living reference for the current Battle of Names visual identity." />
+    <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="/src/visualIdentity.css" />
+  </head>
+  <body class="identity-page">
+    <div id="app" class="identity-shell">
+      <header class="identity-topbar">
+        <a class="identity-back" href="/">← Back to battle</a>
+        <span>Current design reference · v1</span>
+      </header>
+
+      <main>
+        <section class="identity-hero" aria-labelledby="identity-title">
+          <p class="identity-kicker">Battle of Names / design inventory</p>
+          <h1 id="identity-title">Visual identity</h1>
+          <p>Explore new Viking artwork, then compare it with the colors, textures, fighters, and storm effects used by the game today.</p>
+          <nav class="identity-nav" aria-label="Visual identity sections">
+            <a href="/#inputPanel">Play illustrated battle</a>
+            <a href="#illustrated-workshop">Illustrated workshop</a>
+            <a href="#viking-concepts">New Viking concepts</a>
+            <a href="#arena">Arena &amp; storm</a>
+            <a href="#fighters">Fighters</a>
+            <a href="#foundations">Foundations</a>
+            <a href="#components">Components</a>
+            <a href="#inventory">Asset inventory</a>
+          </nav>
+        </section>
+
+        <section id="illustrated-workshop" class="identity-section illustrated-workshop" aria-labelledby="workshop-title">
+          <div class="identity-section-heading">
+            <div><p class="identity-kicker">Selected direction / art pass 02</p><h2 id="workshop-title">Clean illustrated, in motion</h2></div>
+            <p>A Viking in twelve shirt colors, a stone arena, and a rolling storm. Try the separate axe and shield in motion, or spread the character layers apart.</p>
+          </div>
+          <div class="workshop-controls">
+            <label for="illustrated-team">Hero color<select id="illustrated-team" disabled><option value="teal">Fjord teal</option><option value="ruby">Ruby red</option><option value="gold">Sun gold</option></select></label>
+            <button id="illustrated-attack" type="button" disabled>Swing axe</button>
+            <button id="illustrated-hit" type="button" disabled>Take a hit</button>
+            <button id="illustrated-pause" type="button" aria-pressed="false" disabled>Pause animation</button>
+          </div>
+          <div class="workshop-options">
+            <label><input id="illustrated-walk" type="checkbox" checked disabled />Walking motion</label>
+            <label><input id="illustrated-layers" type="checkbox" disabled />Separate layers</label>
+            <label><input id="illustrated-storm" type="checkbox" checked disabled />Show storm</label>
+            <label><input id="illustrated-repeat-hits" type="checkbox" disabled />Repeat hits</label>
+            <label for="illustrated-storm-size">Storm size <input id="illustrated-storm-size" type="range" min="45" max="100" value="100" disabled /><output id="illustrated-storm-value" for="illustrated-storm-size">100%</output></label>
+          </div>
+          <p id="illustrated-status" class="workshop-status" role="status">Loading illustrated artwork…</p>
+          <div class="workshop-stages">
+            <figure class="workshop-character"><canvas id="illustrated-rig" width="480" height="480" role="img" aria-label="Animated Viking with separate axe and shield, plus small character previews">Your browser does not support the character preview.</canvas><figcaption>Character study <span>Idle, stride, swing &amp; recoil</span></figcaption></figure>
+            <figure class="workshop-arena"><canvas id="illustrated-arena" width="720" height="720" role="img" aria-label="Three illustrated Viking teams moving through a stone arena surrounded by a cyan lightning storm">Your browser does not support the arena preview.</canvas><figcaption>Arena study <span>Three teams · illustrated storm</span></figcaption></figure>
+          </div>
+          <p class="identity-concept-note">Animation study · Hits produce a sharp recoil, a burst of blood, and fading splatter on the stone. Enable “Repeat hits” to judge the effect at arena size. Movement uses body bounce and mirroring; directional poses and a full walking cycle are future refinements.</p>
+          <h3 class="workshop-assets-title">Twelve colours for the arena</h3>
+          <p class="identity-concept-note">Pick a shirt to try it in motion. Battles use every colour before repeating.</p>
+          <div id="illustrated-palette" class="workshop-palette" role="group" aria-label="Viking shirt colours"></div>
+          <h3 class="workshop-assets-title">The artwork pieces</h3>
+          <div class="workshop-assets">
+            <a href="/assets/visual-identity/illustrated-v2/body-teal-v2.png" target="_blank" rel="noopener"><img src="/assets/visual-identity/illustrated-v2/body-teal-v2.png" alt="Unarmed teal Viking body" loading="lazy" /><span>Teal body ↗</span></a>
+            <a href="/assets/visual-identity/illustrated-v2/body-ruby-v2.png" target="_blank" rel="noopener"><img src="/assets/visual-identity/illustrated-v2/body-ruby-v2.png" alt="Unarmed ruby Viking body" loading="lazy" /><span>Ruby body ↗</span></a>
+            <a href="/assets/visual-identity/illustrated-v2/body-gold-v2.png" target="_blank" rel="noopener"><img src="/assets/visual-identity/illustrated-v2/body-gold-v2.png" alt="Unarmed gold Viking body" loading="lazy" /><span>Gold body ↗</span></a>
+            <a href="/assets/visual-identity/illustrated-v2/axe-v2.png" target="_blank" rel="noopener"><img src="/assets/visual-identity/illustrated-v2/axe-v2.png" alt="Separate illustrated steel axe" loading="lazy" /><span>Axe ↗</span></a>
+            <a href="/assets/visual-identity/illustrated-v2/shield-v2.png" target="_blank" rel="noopener"><img src="/assets/visual-identity/illustrated-v2/shield-v2.png" alt="Separate illustrated wooden shield" loading="lazy" /><span>Shield ↗</span></a>
+            <a href="/assets/visual-identity/illustrated-v2/arena-v2.png" target="_blank" rel="noopener"><img src="/assets/visual-identity/illustrated-v2/arena-v2.png" alt="Norse stone arena floor" loading="lazy" /><span>Arena ↗</span></a>
+            <a href="/assets/visual-identity/illustrated-v2/storm-v2.png" target="_blank" rel="noopener"><img src="/assets/visual-identity/illustrated-v2/storm-v2.png" alt="Transparent illustrated storm ring with cyan lightning" loading="lazy" /><span>Storm ↗</span></a>
+          </div>
+        </section>
+
+        <section id="viking-concepts" class="identity-section identity-concepts" aria-labelledby="concepts-title">
+          <div class="identity-section-heading">
+            <div><p class="identity-kicker">Art exploration / v1</p><h2 id="concepts-title">Original Viking concepts</h2></div>
+            <p>Three generated character concepts with transparent backgrounds. Compare the large artwork and the small previews to see which style reads best in the arena.</p>
+          </div>
+          <div class="identity-concept-controls">
+            <label for="concept-background">Preview background
+              <select id="concept-background"><option value="arena">Dark arena</option><option value="light">Light parchment</option></select>
+            </label>
+            <button id="concept-motion" type="button" aria-pressed="false">Preview idle motion</button>
+          </div>
+          <div class="identity-concept-grid">
+            <article class="identity-concept-card">
+              <div class="identity-concept-art"><img src="/assets/visual-identity/vikings/playful-norse-v1.png" width="1254" height="1254" alt="Playful ginger-bearded Viking with rounded proportions, a teal tunic, axe and wooden shield" decoding="async" /></div>
+              <div class="identity-concept-copy"><p class="identity-kicker">Direction 01</p><h3>Playful Norse</h3><p>Rounded shapes, soft shading, and an expressive face. A warm, lively arcade character.</p></div>
+              <div class="identity-concept-sizes" aria-label="Playful Norse at game sizes"><figure><img src="/assets/visual-identity/vikings/playful-norse-v1.png" width="64" height="64" alt="" /><figcaption>64 px</figcaption></figure><figure><img src="/assets/visual-identity/vikings/playful-norse-v1.png" width="96" height="96" alt="" /><figcaption>96 px</figcaption></figure></div>
+              <a class="identity-concept-original" href="/assets/visual-identity/vikings/playful-norse-v1.png" target="_blank" rel="noopener">Open original PNG ↗</a>
+            </article>
+            <article class="identity-concept-card">
+              <div class="identity-concept-art"><img src="/assets/visual-identity/vikings/painted-fantasy-v1.png" width="1254" height="1254" alt="Painted fantasy Viking with weathered steel armor, fur shoulders, braided ginger beard and teal shield" decoding="async" /></div>
+              <div class="identity-concept-copy"><p class="identity-kicker">Direction 02</p><h3>Painted fantasy</h3><p>Weathered metal, fur, and carved details. A richer fantasy look with more texture.</p></div>
+              <div class="identity-concept-sizes" aria-label="Painted fantasy at game sizes"><figure><img src="/assets/visual-identity/vikings/painted-fantasy-v1.png" width="64" height="64" alt="" /><figcaption>64 px</figcaption></figure><figure><img src="/assets/visual-identity/vikings/painted-fantasy-v1.png" width="96" height="96" alt="" /><figcaption>96 px</figcaption></figure></div>
+              <a class="identity-concept-original" href="/assets/visual-identity/vikings/painted-fantasy-v1.png" target="_blank" rel="noopener">Open original PNG ↗</a>
+            </article>
+            <article class="identity-concept-card">
+              <div class="identity-concept-art"><img src="/assets/visual-identity/vikings/clean-illustrated-v1.png" width="1254" height="1254" alt="Clean illustrated Viking with bold dark outlines, simple teal clothing, ginger beard, axe and round shield" decoding="async" /></div>
+              <div class="identity-concept-copy"><p class="identity-kicker">Direction 03 · Selected</p><h3>Clean illustrated</h3><p>Bold outlines and clear color blocks. A graphic direction designed for small characters.</p></div>
+              <div class="identity-concept-sizes" aria-label="Clean illustrated at game sizes"><figure><img src="/assets/visual-identity/vikings/clean-illustrated-v1.png" width="64" height="64" alt="" /><figcaption>64 px</figcaption></figure><figure><img src="/assets/visual-identity/vikings/clean-illustrated-v1.png" width="96" height="96" alt="" /><figcaption>96 px</figcaption></figure></div>
+              <a class="identity-concept-original" href="/assets/visual-identity/vikings/clean-illustrated-v1.png" target="_blank" rel="noopener">Open original PNG ↗</a>
+            </article>
+          </div>
+          <p class="identity-concept-note">Original concept artwork · Each Viking here is a single image. The selected illustrated direction now has separate equipment and team colors in the workshop above.</p>
+        </section>
+
+        <section id="arena" class="identity-section" aria-labelledby="arena-title">
+          <div class="identity-section-heading">
+            <div><p class="identity-kicker">01 / motion</p><h2 id="arena-title">Arena &amp; storm</h2></div>
+            <p>This is the real game renderer in a preview frame: worn slate and runes, a precise safe-circle boundary, violet storm mist, and exposure warnings from real gameplay.</p>
+          </div>
+          <div class="identity-stage">
+            <iframe src="/?visual-preview=1" title="Live preview of the current arena and Viking fighters" loading="lazy"></iframe>
+            <div class="identity-stage-tag" aria-hidden="true">Live specimen · current game renderer</div>
+          </div>
+          <div class="identity-note-grid">
+            <article><h3>Storm edge</h3><p>Layered violet cloud banks, wind streaks and local lightning flashes cover unsafe ground. The pale blue boundary follows the exact safe-circle radius; Vikings remain visible through the foreground mist.</p></article>
+            <article><h3>Battle effects</h3><p>Axe swings, recoil, blood and fallen bodies respond to combat. Exposed Vikings show a filling ring and time remaining before storm elimination.</p></article>
+            <article><h3>Arena texture</h3><p>Uneven slate slabs with shaded edges, sparse moss, worn runes and a central compass carving fade into the purple page. The cached ground stays fixed as the safe circle shrinks.</p></article>
+          </div>
+        </section>
+
+        <section id="fighters" class="identity-section" aria-labelledby="fighters-title">
+          <div class="identity-section-heading">
+            <div><p class="identity-kicker">02 / characters</p><h2 id="fighters-title">Viking fighters</h2></div>
+            <p>The live battle now uses layered illustrated Vikings in twelve shirt colours, with matching accents, numbered name labels and health indicators. The original seven-color palette remains below as a reference.</p>
+          </div>
+          <div id="fighterThemes" class="identity-fighter-grid" aria-label="Current fighter color themes"></div>
+          <div class="identity-fighter-parts">
+            <div><span class="identity-part-icon">⚔</span><strong>Axe</strong><small>Steel blade, warm gold handle</small></div>
+            <div><span class="identity-part-icon">ᚠ</span><strong>Roster runes</strong><small>Seven repeating glyphs</small></div>
+            <div><span class="identity-part-icon">♥</span><strong>Health</strong><small>Three marks above each Viking</small></div>
+            <div><span class="identity-part-icon">♛</span><strong>Helmet</strong><small>Silver dome, gold band, horns</small></div>
+          </div>
+        </section>
+
+        <section id="foundations" class="identity-section" aria-labelledby="foundations-title">
+          <div class="identity-section-heading">
+            <div><p class="identity-kicker">03 / foundations</p><h2 id="foundations-title">Color, type &amp; texture</h2></div>
+            <p>Purple-black grounds, parchment gold text, neon fighter accents, and one decorative typeface set the current mood.</p>
+          </div>
+          <div class="identity-foundation-grid">
+            <div class="identity-foundation-card">
+              <h3>Core colors</h3>
+              <div class="identity-color-list">
+                <div><span style="--sample:#130017"></span><strong>Night</strong><code>#130017</code></div>
+                <div><span style="--sample:#2e003e"></span><strong>Plum</strong><code>#2e003e</code></div>
+                <div><span style="--sample:#4b0082"></span><strong>Violet</strong><code>#4b0082</code></div>
+                <div><span style="--sample:#ffe599"></span><strong>Title gold</strong><code>#ffe599</code></div>
+                <div><span style="--sample:#f7f0ff"></span><strong>Text</strong><code>#f7f0ff</code></div>
+              </div>
+            </div>
+            <div class="identity-foundation-card identity-type-card">
+              <h3>Typography</h3>
+              <p class="identity-type-display">Battle of Names</p>
+              <p class="identity-type-body">Cinzel Decorative gives headings, controls, labels, and body copy the same carved fantasy character.</p>
+              <code>"Cinzel Decorative", serif</code>
+            </div>
+          </div>
+          <div class="identity-material-grid">
+            <div class="identity-material identity-material--page"><strong>Page gradient</strong><span>Violet → plum → night</span></div>
+            <div class="identity-material identity-material--panel"><strong>Glass panel</strong><span>Translucent ink with violet glow</span></div>
+            <div class="identity-material identity-material--arena"><strong>Arena ground</strong><span>Radial ink with gold motes</span></div>
+            <div class="identity-material identity-material--parchment"><strong>Result parchment</strong><span>Warm gold over plum</span></div>
+          </div>
+        </section>
+
+        <section id="components" class="identity-section" aria-labelledby="components-title">
+          <div class="identity-section-heading">
+            <div><p class="identity-kicker">04 / interface</p><h2 id="components-title">Current components</h2></div>
+            <p>Real CSS classes from the game, shown together for side-by-side design work.</p>
+          </div>
+          <div class="identity-component-grid">
+            <div class="input-panel identity-component">
+              <h3>Controls</h3>
+              <label class="select-label">Spawn points<select aria-label="Sample spawn mode"><option>Even Spread</option></select></label>
+              <label class="input-label" for="identity-sample-names">Enter contenders</label>
+              <textarea id="identity-sample-names" rows="2" readonly>Astrid&#10;Bjorn&#10;Freya</textarea>
+              <div class="controls"><button type="button">Start Battle</button></div>
+              <div class="status-bar">Arena shrinking · 3 fighters left</div>
+            </div>
+            <div class="scoreboard-panel identity-component">
+              <h3 class="scoreboard-title">Arena Roster</h3>
+              <ul class="scoreboard"><li class="scoreboard-entry scoreboard-entry--winner"><span class="scoreboard-entry__gem identity-gem">ᚠ</span><span class="scoreboard-entry__name">Astrid</span><span class="scoreboard-entry__hearts"><i class="scoreboard-entry__heart"></i><i class="scoreboard-entry__heart"></i><i class="scoreboard-entry__heart scoreboard-entry__heart--lost"></i></span></li></ul>
+              <div class="scoreboard-fallen"><h4 class="scoreboard-fallen__title">Fallen</h4><ul class="scoreboard scoreboard--fallen"><li class="scoreboard-entry scoreboard-entry--eliminated"><span class="scoreboard-entry__gem identity-gem">ᚢ</span><span class="scoreboard-entry__name">Bjorn</span><span class="scoreboard-entry__hearts"><i class="scoreboard-entry__heart scoreboard-entry__heart--lost"></i><i class="scoreboard-entry__heart scoreboard-entry__heart--lost"></i><i class="scoreboard-entry__heart scoreboard-entry__heart--lost"></i></span></li></ul></div>
+            </div>
+            <div class="results-panel identity-component">
+              <h3>Battle Log</h3>
+              <div class="winner-banner">Winner: <span>Astrid</span></div>
+              <ol><li class="result-item result-item--winner"><span class="result-icon">🏆</span><span class="result-content"><span class="result-name">Astrid</span><span class="result-meta">Victory! · survived 8.2s · dealt 3</span></span></li><li class="result-item"><span class="result-icon">⚔️</span><span class="result-content"><span class="result-name">Bjorn</span><span class="result-meta">Final blow · survived 8.2s</span></span></li></ol>
+            </div>
+            <figure class="identity-photo identity-component"><img src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&amp;fit=crop&amp;w=900&amp;q=80" alt="Mountain landscape currently used in the game hero" loading="lazy" /><figcaption>Current hero photograph · remote Unsplash image</figcaption></figure>
+          </div>
+        </section>
+
+        <section id="inventory" class="identity-section" aria-labelledby="inventory-title">
+          <div class="identity-section-heading">
+            <div><p class="identity-kicker">05 / source map</p><h2 id="inventory-title">Asset inventory</h2></div>
+            <p>The battle combines local Viking PNGs with cached slate textures, violet storm mist, hit particles and exposure indicators. CSS supplies the page surfaces; the earlier illustrated arena and cyan storm remain workshop concepts.</p>
+          </div>
+          <div class="identity-table-wrap"><table><thead><tr><th>Asset</th><th>Current source</th><th>Where it appears</th></tr></thead><tbody>
+            <tr><td>Original illustrated artwork</td><td><code>public/assets/visual-identity/illustrated-v2/</code></td><td>Vikings in the live battle; full scene in the workshop</td></tr>
+            <tr><td>Viking concept artwork</td><td><code>public/assets/visual-identity/vikings/</code></td><td>Three art directions above</td></tr>
+            <tr><td>Slate ground, storm mist &amp; lightning</td><td><code>src/arenaRenderer.ts</code></td><td>Live battlefield and storm boundary</td></tr>
+            <tr><td>Viking body, axe &amp; shield</td><td>Layered PNGs drawn by <code>src/illustratedFighter.ts</code></td><td>Each fighter</td></tr>
+            <tr><td>Blood splatter</td><td>Bounded canvas particles in <code>src/bloodEffects.ts</code></td><td>Damage events in the battle and workshop</td></tr>
+            <tr><td>Page, panel &amp; arena textures</td><td>Gradients and inline SVG in <code>src/style.css</code></td><td>Background and surfaces</td></tr>
+            <tr><td>Optimised Viking outfits &amp; equipment</td><td><code>public/assets/battle/v1/</code></td><td>256 px WebP in battles; 512 px in the workshop</td></tr>
+            <tr><td>Shirt colours &amp; matching accents</td><td><code>src/data/shirtPalette.json</code></td><td>Shared palette for the asset build and roster</td></tr>
+            <tr><td>Original fighter colors &amp; runes</td><td><code>src/visualIdentityData.ts</code></td><td>Design reference and roster glyphs</td></tr>
+            <tr><td>Display type</td><td>Google Fonts · Cinzel Decorative</td><td>Headings, labels, controls</td></tr>
+            <tr><td>Hero photograph</td><td>Remote Unsplash URL in <code>src/main.ts</code> and <code>index.html</code></td><td>Page hero and social preview</td></tr>
+          </tbody></table></div>
+        </section>
+      </main>
+
+      <footer class="identity-footer"><span>Current identity captured for future design iterations.</span><a href="/">Return to battle →</a></footer>
+    </div>
+    <script type="module" src="/src/visualIdentity.ts"></script>
+  </body>
+</html>
