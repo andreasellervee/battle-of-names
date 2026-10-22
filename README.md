@@ -11,15 +11,18 @@ Open `/visual-identity/` on the dev server to see the game's current colors, typ
 The [development journal](docs/progression/README.md) follows the project from its [GPT-5-Codex beginnings in 2025](docs/progression/v1-gpt-5-codex.md) to the [Astra design and performance work in September 2026](docs/progression/v2-astra.md). The [initial requirements](specs/requirements-v1.md) are preserved separately.
 
 ## Highlights
+- **Arena-first layout** – a compact header, collapsible battle setup and roster, and a square arena on phones keep the fight in view. Setup closes automatically when a round starts.
+- **Victory sequence** – the final two trigger a gentle camera zoom and duel announcement. The champion appears on the arena with their Viking, round statistics, Rematch and Edit contenders. Rematch repeats the previous lineup and spawn mode with fresh randomness; combat still runs until one survivor remains. Reduced-motion preferences disable the new camera and entrance effects.
 - **Instant setup** – enter names in the left panel, choose a spawn pattern, and launch the fight with one click.
 - **Illustrated Vikings** – reusable body, axe, and shield sprites with twelve shirt colours and matching roster accents. Cloth variants are generated ahead of time as WebP sprites; battles load 256 px artwork and the workshop loads 512 px artwork.
 - **Combat feedback** – damage triggers axe swings, recoil, and bounded blood particles; fallen Vikings settle into translucent grey bodies that remain on the arena floor until the next round.
 - **Atmospheric arena** – softly fading stone slabs, moss and worn carvings, a precise shrinking boundary, and layered violet clouds with forked lightning over unsafe ground. Exposure rings and countdowns show when the storm will eliminate a fighter.
+- **Crowded battles** – dense Even Spread lineups use a hexagonal formation and Random uses spaced candidate positions. Both can use more of the canvas for their starting safe zone; fighter sizes, health, combat and storm rules stay unchanged. Labels keep stable positions, avoid each other, and switch to compact names or numbered badges as space runs out. Tap a fighter/nameplate or choose a numbered roster entry to highlight one contender and read their full name.
 - **Dynamic roster** – live scoreboard tracks remaining health, hits dealt, and fallen contenders.
 - **Battle log** – parchment-styled results update in real time with eliminations, causes, and survival time.
 - **Spawn modes** – pick how fighters enter the arena:
   - `Random` – scatter everyone across the arena.
-  - `Even Spread` – ring of evenly spaced fighters.
+  - `Even Spread` – a ring for small rounds, a spread across the safe interior for crowded rounds.
   - `Clustered Teams` – squads deploy in small pods.
   - `Center Drop` – pile into the middle as the arena tightens rapidly.
   - `Storm Spawn` – start beyond the circle and rush inward before the storm closes.

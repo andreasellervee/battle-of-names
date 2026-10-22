@@ -1,7 +1,8 @@
 import { setTextIfChanged } from "./uiUpdates";
 import { ArenaRenderer } from "./arenaRenderer";
 import { SHIRT_PALETTE } from "./shirtPalette";
-import { evenSpawnPositions } from "./spawnPositions";
+import { evenSpawnPositions, randomSpawnPositions, spacedArenaRadius } from "./spawnPositions";
+import { layoutNameplates, LABEL_HEIGHT, type LabelPlacement } from "./nameplateLayout";
 import { MELEE_DURATION_MS, MELEE_IMPACT_MS } from "./meleeAnimation";
 import tinycolor from "tinycolor2";
 import { createFallenViking, drawIllustratedFighter, loadIllustratedCharacters, type IllustratedCharacterAssets, type IllustratedTeam } from "./illustratedFighter";
@@ -36,6 +37,8 @@ interface Fighter {
   combatUntil: number;
   strike?: { targetId: number; x: number; y: number; resolved: boolean };
   nameplate: HTMLCanvasElement;
+  compactNameplate: HTMLCanvasElement;
+  badgeNameplate: HTMLCanvasElement;
   wanderAngle: number;
   wanderTimer: number;
   displayIndex: number;
@@ -54,7 +57,7 @@ interface ResultEntry {
 interface ScoreboardEntry {
   root: HTMLLIElement;
   gem: HTMLSpanElement;
-  name: HTMLSpanElement;
+  name: HTMLButtonElement;
   hearts: HTMLSpanElement[];
   feedback: HTMLSpanElement;
   lastHitsTaken: number;
@@ -91,7 +94,7 @@ const BATTLE_THEMES: FighterTheme[] = SHIRT_PALETTE.map(palette => ({
 }));
 const SPAWN_MODE_DESCRIPTIONS: Record<SpawnMode, string> = {
   random: "All contenders spawn in random positions inside the arena.",
-  even: "Fighters spawn evenly spaced inside the safe circle, clear of the storm.",
+  even: "Fighters spread across safe ground; larger lineups fill the interior.",
   clusters: "Contenders arrive in small clusters of 2-3 per side.",
   center: "All fighters drop near the middle as the circle shrinks quickly.",
   storm: "Everyone spawns outside the safe zone and must rush into the arena."
@@ -118,96 +121,91 @@ if (!appRoot) {
   throw new Error("App root element not found");
 }
 
-// The semantic hero, nav, and sections help crawlers understand the narrative of the experience.
 appRoot.innerHTML = `
   <div class="panel">
     <header class="hero" aria-labelledby="battleTitle">
-      <div class="hero__content">
-        <p class="hero__eyebrow">Arcade name duels</p>
+      <div>
+        <p class="hero__eyebrow">One arena. One survivor.</p>
         <h1 id="battleTitle">Battle of Names</h1>
-        <p class="hero__lead">
-          Enter contenders, choose your spawn, and watch the animated arena resolve a winner with neon sparks, shrinking
-          zones, and a dramatic elimination log.
-        </p>
-        <nav class="hero__nav" aria-label="Quick navigation">
-          <a href="#inputPanel">Prep contenders</a>
-          <a href="#battleCanvas">Watch the arena</a>
-          <a href="#resultsPanel">Read the log</a>
-          <a href="/visual-identity/">Visual identity</a>
-        </nav>
+        <p class="hero__lead">Gather your contenders. Let the Vikings decide.</p>
       </div>
-      <figure class="hero__visual">
-        <img
-          src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80"
-          alt="Neon arena floor lit by glowing combatants and trails"
-          width="420"
-          height="280"
-          loading="lazy"
-        />
-        <figcaption>Pulse-lit arena energy matches the cinematic elimination feel.</figcaption>
-      </figure>
+      <a class="hero__link" href="#inputPanel" id="prepLink">Prepare battle <span aria-hidden="true">↗</span></a>
     </header>
     <main class="layout panel-main" aria-label="Name picker battle interface">
-      <article class="controls-article sidebar">
-        <section class="input-panel" id="inputPanel">
-          <label class="select-label" for="fightThemeSelect">
-            Select Fight Theme (optional)
-            <select id="fightThemeSelect">
-              ${fightThemeOptions}
-            </select>
-          </label>
-          <label class="input-label" for="namesInput">Enter contenders</label>
-          <textarea id="namesInput" placeholder="One name per line..."></textarea>
-          <div class="controls">
-            <button id="startBtn">Start Battle</button>
-            <label class="select-label">
-              Spawn Points
-              <select id="spawnMode">
-                <option value="random" data-description="${SPAWN_MODE_DESCRIPTIONS.random}">Random</option>
-                <option value="even" data-description="${SPAWN_MODE_DESCRIPTIONS.even}" selected>Even Spread</option>
-                <option value="clusters" data-description="${SPAWN_MODE_DESCRIPTIONS.clusters}">Clustered Teams</option>
-                <option value="center" data-description="${SPAWN_MODE_DESCRIPTIONS.center}">Center Drop</option>
-                <option value="storm" data-description="${SPAWN_MODE_DESCRIPTIONS.storm}">Storm Spawn</option>
-              </select>
+      <aside class="sidebar">
+        <details class="setup-panel" id="setupPanel">
+          <summary><span>Battle setup</span><span id="setupSummary">Choose your contenders</span></summary>
+          <section class="input-panel" id="inputPanel">
+            <label class="select-label" for="fightThemeSelect">
+              Fight theme <span class="optional">Optional</span>
+              <select id="fightThemeSelect">${fightThemeOptions}</select>
             </label>
-          </div>
-          <div class="status-bar" id="statusBar" aria-live="polite"></div>
-        </section>
-        <section class="scoreboard-panel" aria-labelledby="scoreboardTitle">
-          <h2 id="scoreboardTitle" class="scoreboard-title">Arena Roster</h2>
+            <label class="input-label" for="namesInput">Enter contenders</label>
+            <textarea id="namesInput" placeholder="One name per line…" rows="5" aria-describedby="setupError"></textarea>
+            <p id="setupError" class="setup-error" role="alert" hidden></p>
+            <div class="controls">
+              <label class="select-label">Spawn points
+                <select id="spawnMode">
+                  <option value="random">Random</option>
+                  <option value="even" selected>Even Spread</option>
+                  <option value="clusters">Clustered Teams</option>
+                  <option value="center">Center Drop</option>
+                  <option value="storm">Storm Spawn</option>
+                </select>
+              </label>
+              <button id="startBtn">Start Battle</button>
+            </div>
+          </section>
+        </details>
+        <details class="scoreboard-panel" id="rosterPanel">
+          <summary class="scoreboard-title">Arena roster</summary>
           <ul id="scoreboardActive" class="scoreboard scoreboard--active"></ul>
           <div id="scoreboardFallenSection" class="scoreboard-fallen" hidden>
             <h3 class="scoreboard-fallen__title">Fallen</h3>
             <ul id="scoreboardFallen" class="scoreboard scoreboard--fallen"></ul>
           </div>
-        </section>
-      </article>
-      <article class="arena-article main-column">
-        <section class="canvas-panel" aria-label="Animated battle arena">
-          <div class="canvas-wrapper">
-            <canvas id="battleCanvas"></canvas>
-            <div id="overlayText" class="overlay-text"></div>
+        </details>
+      </aside>
+      <section class="canvas-panel" id="arenaPanel" aria-label="Animated battle arena" tabindex="-1">
+        <div class="arena-toolbar">
+          <h2>The arena</h2>
+          <span id="battleCount">Awaiting contenders</span>
+        </div>
+        <div class="canvas-wrapper">
+          <canvas id="battleCanvas" aria-label="Viking battle animation"></canvas>
+          <div id="idlePrompt" class="idle-prompt">
+            <span class="stage-rune" aria-hidden="true">ᛟ</span>
+            <h2>A name becomes a legend</h2>
+            <p>Two or more contenders. A shrinking arena.<br>Only one will remain.</p>
+            <button id="prepareBtn">Prepare battle</button>
           </div>
-          <div class="arena-legend" aria-label="Arena guide"><span><i class="arena-legend-safe"></i>Safe ground</span><span><i class="arena-legend-storm"></i>Storm</span><span class="arena-legend-warning">Exposure ring fills before elimination</span></div>
-        </section>
-        <section class="results-panel results-panel--empty" id="resultsPanel">
-          <h2>Battle Log</h2>
-          <div class="winner-banner" id="winnerBanner"></div>
-          <div class="results-placeholder" id="resultsPlaceholder">
-            Results will appear here once a battle concludes.
-          </div>
-          <ol id="resultsList"></ol>
-        </section>
-      </article>
+          <div id="overlayText" class="overlay-text" aria-live="polite"></div>
+          <div id="finalDuel" class="final-duel" role="status" hidden>Final duel <span>Only two remain</span></div>
+          <section id="victoryCard" class="victory-card" aria-labelledby="victoryName" hidden>
+            <p class="victory-eyebrow">Last Viking standing</p>
+            <canvas id="victoryPortrait" width="320" height="260" aria-hidden="true"></canvas>
+            <h2 id="victoryName" tabindex="-1"></h2>
+            <p id="victoryStats"></p>
+            <div class="victory-actions">
+              <button id="rematchBtn">Rematch</button>
+              <button id="editBtn" class="button-secondary">Edit contenders</button>
+            </div>
+          </section>
+        </div>
+        <div class="status-bar" id="statusBar" role="status" aria-live="polite"></div>
+        <div class="follow-bar"><p id="followStatus" role="status">Numbers match the roster. Tap a Viking or a name to follow.</p><button id="clearFollow" class="button-secondary" hidden>Stop following</button></div>
+        <div class="arena-legend" aria-label="Arena guide"><span><i class="arena-legend-safe"></i>Safe ground</span><span><i class="arena-legend-storm"></i>Storm</span><span class="arena-legend-warning">Exposure ring fills before elimination</span></div>
+      </section>
+      <section class="results-panel results-panel--empty" id="resultsPanel">
+        <h2>Battle Log</h2>
+        <div class="winner-banner" id="winnerBanner" hidden></div>
+        <div class="results-placeholder" id="resultsPlaceholder">Every legend starts with a battle. Your results will appear here.</div>
+        <ol id="resultsList"></ol>
+      </section>
     </main>
     <footer class="flavor-bar">
-      💬 Tip: "Legends say only one name survives the circle..."
-      <p class="flavor-disclaimer">
-        Built fully with Artificial Intelligence — check the open-source repo
-        <a href="https://github.com/andreasellervee/battle-of-names" target="_blank" rel="noopener noreferrer"
-          >here</a
-        >.
-      </p>
+      <span>May the last name standing be yours.</span>
+      <div><a href="/visual-identity/">Visual identity</a> · <a href="https://github.com/andreasellervee/battle-of-names" target="_blank" rel="noopener noreferrer">Built with AI · View source</a></div>
     </footer>
   </div>
 `;
@@ -226,6 +224,34 @@ const resultsPlaceholder = document.querySelector<HTMLDivElement>("#resultsPlace
 const scoreboardAliveElement = document.querySelector<HTMLUListElement>("#scoreboardActive")!;
 const scoreboardFallenElement = document.querySelector<HTMLUListElement>("#scoreboardFallen")!;
 const scoreboardFallenSectionElement = document.querySelector<HTMLDivElement>("#scoreboardFallenSection")!;
+
+const setupPanel = document.querySelector<HTMLDetailsElement>("#setupPanel")!;
+const setupError = document.querySelector<HTMLElement>("#setupError")!;
+const setupSummary = document.querySelector<HTMLElement>("#setupSummary")!;
+const arenaPanel = document.querySelector<HTMLElement>("#arenaPanel")!;
+const battleCount = document.querySelector<HTMLElement>("#battleCount")!;
+const idlePrompt = document.querySelector<HTMLElement>("#idlePrompt")!;
+const finalDuel = document.querySelector<HTMLElement>("#finalDuel")!;
+const victoryCard = document.querySelector<HTMLElement>("#victoryCard")!;
+const victoryName = document.querySelector<HTMLElement>("#victoryName")!;
+const victoryStats = document.querySelector<HTMLElement>("#victoryStats")!;
+const victoryPortrait = document.querySelector<HTMLCanvasElement>("#victoryPortrait")!;
+const followStatus = document.querySelector<HTMLElement>("#followStatus")!;
+const clearFollow = document.querySelector<HTMLButtonElement>("#clearFollow")!;
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+setupPanel.open = window.matchMedia("(min-width: 900px)").matches;
+
+function editContenders() {
+  setupPanel.open = true;
+  textarea.focus({ preventScroll: true });
+  setupPanel.scrollIntoView({ block: "nearest", behavior: "instant" });
+}
+for (const id of ["prepareBtn", "prepLink", "editBtn"]) {
+  document.getElementById(id)!.addEventListener("click", event => {
+    event.preventDefault();
+    editContenders();
+  });
+}
 
 const ctx = canvas.getContext("2d");
 if (!ctx) {
@@ -262,6 +288,8 @@ fightThemeSelect.addEventListener("change", () => {
   if (!names) {
     return;
   }
+  setupError.hidden = true;
+  textarea.removeAttribute("aria-invalid");
   isApplyingTheme = true;
   textarea.value = names.join("\n");
   isApplyingTheme = false;
@@ -269,6 +297,8 @@ fightThemeSelect.addEventListener("change", () => {
 });
 
 textarea.addEventListener("input", () => {
+  setupError.hidden = true;
+  textarea.removeAttribute("aria-invalid");
   if (isApplyingTheme) {
     return;
   }
@@ -300,6 +330,12 @@ class BattleGame {
   private blood = new BloodEffects(24);
   private fallenSprites = new Map<IllustratedTeam, HTMLCanvasElement>();
   private finishedAt = 0;
+  private finalDuelAt = 0;
+  private followedId: number | null = null;
+  private labelPlacements: LabelPlacement[] = [];
+  private viewZoom = 1;
+  private lastLineup: string[] = [];
+  private lastSpawnMode: SpawnMode = "even";
   private scoreboardEntries: Map<number, ScoreboardEntry> = new Map();
 
   constructor(
@@ -314,12 +350,42 @@ class BattleGame {
     private readonly artwork: IllustratedCharacterAssets
   ) {
     this.resizeCanvas();
+    // Observe the actual arena, including grid changes and opening setup on phones.
+    new ResizeObserver(() => this.resizeCanvas()).observe(canvas);
     window.addEventListener("resize", () => this.resizeCanvas());
+    canvas.addEventListener("click", event => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left, y = event.clientY - rect.top;
+      const label = this.labelPlacements.find(p => x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + LABEL_HEIGHT);
+      const nearest = this.fighters.filter(f => f.alive).map(f => ({
+        fighter: f,
+        distance: Math.hypot(this.centerX + (f.x - this.centerX) * this.viewZoom - x, this.centerY + (f.y - this.centerY) * this.viewZoom - y)
+      })).sort((a, b) => a.distance - b.distance)[0];
+      const id = label?.id ?? (nearest && nearest.distance < nearest.fighter.radius * this.viewZoom * 1.6 ? nearest.fighter.id : null);
+      this.follow(id === this.followedId ? null : id);
+    });
+    clearFollow.addEventListener("click", () => this.follow(null));
     this.setStatus("Add some names and hit Start Battle!");
   }
 
   start(names: string[], spawnMode: SpawnMode) {
     this.cancelLoop();
+    this.labelPlacements = [];
+    this.follow(null);
+    this.lastLineup = [...names];
+    this.lastSpawnMode = spawnMode;
+    setupPanel.open = false;
+    setupSummary.textContent = `${names.length} contenders · ${Array.from(spawnModeSelect.options).find(option => option.value === spawnMode)!.text}`;
+    idlePrompt.hidden = true;
+    victoryCard.hidden = true;
+    finalDuel.hidden = true;
+    this.finalDuelAt = 0;
+    battleCount.textContent = `${names.length} contenders`;
+    startButton.disabled = true;
+    startButton.textContent = "Battle in progress";
+    for (const input of [textarea, spawnModeSelect, fightThemeSelect]) input.disabled = true;
+    // Capture the final layout before spawning; closing setup must not resize a running round.
+    this.resizeCanvas();
     this.fighters = [];
     this.results = [];
     this.blood.clear();
@@ -333,10 +399,13 @@ class BattleGame {
     this.winnerElement.textContent = "";
     this.resultsListElement.innerHTML = "";
     this.resultsPlaceholderElement.hidden = false;
+    this.resultsPlaceholderElement.textContent = "The battle is underway. Final standings appear when one Viking remains.";
     this.resultsElement.classList.add("results-panel--empty");
     this.setStatus("Battle starting...");
     const minDimension = Math.min(this.canvasWidth, this.canvasHeight);
-    const initialRadius = minDimension / 2.6;
+    const fighterRadius = Math.max(18, Math.min(32, minDimension / 18));
+    const initialRadius = spawnMode === "even" || spawnMode === "random"
+      ? spacedArenaRadius(minDimension, names.length, fighterRadius) : minDimension / 2.6;
     this.arena = {
       radius: initialRadius,
       minRadius: minDimension / 8
@@ -345,6 +414,14 @@ class BattleGame {
     this.prepareFighters(names, spawnMode);
     this.buildScoreboard();
     this.loop(now);
+    if (!isVisualPreview) {
+      arenaPanel.focus({ preventScroll: true });
+      arenaPanel.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+  }
+
+  rematch() {
+    if (this.phase === "finished") this.start(this.lastLineup, this.lastSpawnMode);
   }
 
   private prepareFighters(names: string[], spawnMode: SpawnMode) {
@@ -408,6 +485,8 @@ class BattleGame {
         lastAttackAt: -Infinity,
         combatUntil: 0,
         nameplate,
+        compactNameplate: this.createNameplate(name, i + 1, theme.base, 68),
+        badgeNameplate: this.createNameplate("", i + 1, theme.base, 0),
         wanderAngle: Math.random() * Math.PI * 2,
         wanderTimer,
         displayIndex: i + 1,
@@ -425,37 +504,7 @@ class BattleGame {
     const safeRing = Math.max(fighterRadius * 3, Math.min(spawnRadius, this.arena.radius - fighterRadius * 1.4));
 
     if (spawnMode === "random") {
-      const taken: { x: number; y: number }[] = [];
-      const maxAttempts = 48;
-      for (let i = 0; i < count; i += 1) {
-        let chosenX = this.centerX;
-        let chosenY = this.centerY;
-        let placed = false;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          const angle = Math.random() * Math.PI * 2;
-          const distance = Math.random() * spawnRadius;
-          const candidateX = this.centerX + Math.cos(angle) * distance;
-          const candidateY = this.centerY + Math.sin(angle) * distance;
-          const spacing = fighterRadius * 2.4;
-          const clear = taken.every((spot) => Math.hypot(candidateX - spot.x, candidateY - spot.y) > spacing);
-          if (clear) {
-            chosenX = candidateX;
-            chosenY = candidateY;
-            taken.push({ x: chosenX, y: chosenY });
-            placed = true;
-            break;
-          }
-        }
-        if (!placed) {
-          const fallbackAngle = (2 * Math.PI * i) / count;
-          const fallbackDistance = safeRing;
-          chosenX = this.centerX + Math.cos(fallbackAngle) * fallbackDistance;
-          chosenY = this.centerY + Math.sin(fallbackAngle) * fallbackDistance;
-          taken.push({ x: chosenX, y: chosenY });
-        }
-        positions.push({ x: chosenX, y: chosenY });
-      }
-      return positions;
+      return randomSpawnPositions(count, this.centerX, this.centerY, this.arena.radius, fighterRadius);
     }
 
     if (spawnMode === "even") {
@@ -534,16 +583,16 @@ class BattleGame {
     return positions;
   }
 
-  private createNameplate(name: string, index: number, color: string) {
+  private createNameplate(name: string, index: number, color: string, maxTextWidth = 116) {
     const plate = document.createElement("canvas");
     const context = plate.getContext("2d")!;
     context.font = "600 12px system-ui, sans-serif";
-    const fullText = `${index} · ${name}`;
+    const fullText = maxTextWidth === 0 ? `${index}` : `${index} · ${name}`;
     const letters = Array.from(fullText).slice(0, 40);
-    while (letters.length > 1 && context.measureText(letters.join("")).width > 116) letters.pop();
+    while (letters.length > 1 && maxTextWidth > 0 && context.measureText(letters.join("")).width > maxTextWidth) letters.pop();
     let text = letters.join("");
     if (text !== fullText) { letters.pop(); text = letters.join("") + "…"; }
-    const width = Math.ceil(context.measureText(text).width) + 16;
+    const width = Math.max(36, Math.ceil(context.measureText(text).width) + 16);
     plate.width = width * 2;
     plate.height = 40;
     context.scale(2, 2);
@@ -577,8 +626,16 @@ class BattleGame {
       gem.style.background = `radial-gradient(circle at 35% 35%, ${tinycolor(fighter.theme.highlight)
         .setAlpha(0.9)
         .toRgbString()}, ${fighter.theme.base})`;
-      gem.textContent = fighter.runeChar;
-      const nameSpan = document.createElement("span");
+      gem.textContent = String(fighter.displayIndex);
+      const nameSpan = document.createElement("button");
+      nameSpan.type = "button";
+      nameSpan.setAttribute("aria-pressed", "false");
+      nameSpan.setAttribute("aria-label", `Follow ${fighter.displayIndex} · ${fighter.name}`);
+      nameSpan.addEventListener("click", () => {
+        this.follow(this.followedId === fighter.id ? null : fighter.id);
+        arenaPanel.focus({ preventScroll: true });
+        arenaPanel.scrollIntoView({ block: "start", behavior: "instant" });
+      });
       nameSpan.className = "scoreboard-entry__name";
       nameSpan.textContent = fighter.name;
       nameSpan.style.color = tinycolor(fighter.theme.base).lighten(28).toHexString();
@@ -633,6 +690,7 @@ class BattleGame {
       }
     }
     this.updateFallenSectionVisibility();
+    if (fighter.id === this.followedId) this.updateFollowStatus();
   }
 
   private moveScoreboardEntry(entry: ScoreboardEntry, target: "alive" | "fallen") {
@@ -705,6 +763,11 @@ class BattleGame {
       this.detectCollisions(timestamp);
       this.resolveStrikes(timestamp);
       const alive = this.fighters.filter((f) => f.alive);
+      setTextIfChanged(battleCount, `${alive.length} / ${this.fighters.length} remaining`);
+      if (alive.length === 2 && !this.finalDuelAt) {
+        this.finalDuelAt = timestamp;
+        finalDuel.hidden = false;
+      }
       if (alive.length <= 1) {
         this.finishBattle(alive[0] ?? null, roundElapsed);
       } else {
@@ -1013,6 +1076,10 @@ class BattleGame {
     if (this.phase === "finished") return;
     this.phase = "finished";
     this.finishedAt = performance.now();
+    finalDuel.hidden = true;
+    startButton.disabled = false;
+    startButton.textContent = "Start Battle";
+    for (const input of [textarea, spawnModeSelect, fightThemeSelect]) input.disabled = false;
     if (winner) {
       winner.eliminatedAt = roundElapsed;
       this.results.push({
@@ -1027,6 +1094,19 @@ class BattleGame {
       winnerName.textContent = winner.name;
       this.winnerElement.replaceChildren("Winner: ", winnerName);
       this.setStatus(`${winner.name} wins the battle!`);
+      battleCount.textContent = `1 / ${this.fighters.length} remaining`;
+      victoryName.textContent = winner.name;
+      victoryName.title = winner.name;
+      victoryStats.textContent = `${this.fighters.length} contenders · ${(roundElapsed / 1000).toFixed(1)}s · ${winner.hitsInflicted} hits dealt`;
+      const portrait = victoryPortrait.getContext("2d")!;
+      portrait.clearRect(0, 0, victoryPortrait.width, victoryPortrait.height);
+      drawIllustratedFighter(portrait, this.artwork, {
+        x: 160, y: 140, size: 220, team: winner.team, time: 0, victory: true
+      });
+      victoryCard.hidden = false;
+      if (!isVisualPreview && arenaPanel.contains(document.activeElement)) {
+        victoryName.focus({ preventScroll: true });
+      }
       this.setWinnerHighlight(winner.id);
       this.pulseScoreboard(winner.id, "scoreboard-entry--pulse-hit");
     } else {
@@ -1070,6 +1150,22 @@ class BattleGame {
     this.context.setTransform(1, 0, 0, 1, 0, 0);
     this.context.clearRect(0, 0, canvas.width, canvas.height);
     this.context.restore();
+    this.context.save();
+    let zoom = 1;
+    if (this.finalDuelAt && !reducedMotion.matches) {
+      const progress = Math.min(1, (now - this.finalDuelAt) / 1200);
+      // Keep both contenders and their labels in view, including Storm Spawn.
+      let maxZoom = 1.3;
+      for (const fighter of this.fighters.filter(f => f.alive)) {
+        const extentX = Math.abs(fighter.x - this.centerX) + Math.max(fighter.radius * 1.8, fighter.nameplate.width / 4);
+        const extentY = Math.abs(fighter.y - this.centerY) + fighter.radius * 1.35 + 70;
+        maxZoom = Math.min(maxZoom, (this.centerX - 12) / extentX, (this.centerY - 12) / extentY);
+      }
+      zoom = 1 + (Math.max(1, maxZoom) - 1) * (1 - Math.pow(1 - progress, 3));
+      this.context.translate(this.centerX, this.centerY);
+      this.context.scale(zoom, zoom);
+      this.context.translate(-this.centerX, -this.centerY);
+    }
     const view = { width: this.canvasWidth, height: this.canvasHeight, radius: this.arena.radius, time: now / 1000 };
     this.arenaRenderer.drawGround(this.context, view);
 
@@ -1089,7 +1185,9 @@ class BattleGame {
     if (this.phase !== "finished") {
       for (const fighter of alive) this.drawStormExposure(fighter, now);
     }
-    this.drawLabels(alive);
+    this.context.restore();
+    this.viewZoom = zoom;
+    if (this.phase !== "finished") this.drawLabels(alive);
   }
 
   private drawStormExposure(fighter: Fighter, now: number) {
@@ -1163,7 +1261,8 @@ class BattleGame {
     if (!weaponOnly) {
       const threatened = this.phase === "running" && fighter.outsideSince !== null && now >= fighter.outsideSince && this.computeArenaOutsideFraction(Math.hypot(fighter.x - this.centerX, fighter.y - this.centerY), fighter.radius) >= 0.1;
       context.strokeStyle = threatened ? "#ff665c" : fighter.theme.base;
-      context.lineWidth = threatened ? 3 : 2;
+      context.lineWidth = fighter.id === this.followedId ? 4 : threatened ? 3 : 2;
+      if (fighter.id === this.followedId) context.strokeStyle = "#ffe599";
       context.beginPath();
       context.ellipse(fighter.x, fighter.y + size * 0.42, size * 0.3, size * 0.08, 0, 0, Math.PI * 2);
       context.stroke();
@@ -1171,6 +1270,7 @@ class BattleGame {
     drawIllustratedFighter(context, this.artwork, {
       x: fighter.x, y: fighter.y, size, team: fighter.team,
       time: fighter.alive ? now / 1000 + fighter.id : 0,
+      victory: this.phase === "finished" && fighter.alive,
       walking: fighter.alive && this.phase === "running" && Math.hypot(fighter.vx, fighter.vy) > 18,
       mirrored: fighter.mirrored, attack: fighter.alive ? attack : 0, hit,
       attackTarget: fighter.strike,
@@ -1179,44 +1279,83 @@ class BattleGame {
     context.restore();
   }
 
+  private follow(id: number | null) {
+    this.followedId = id;
+    for (const [fighterId, entry] of this.scoreboardEntries) {
+      entry.name.setAttribute("aria-pressed", String(fighterId === id));
+      entry.root.classList.toggle("scoreboard-entry--followed", fighterId === id);
+    }
+    this.updateFollowStatus();
+  }
+
+  private updateFollowStatus() {
+    const fighter = this.fighters.find(f => f.id === this.followedId);
+    clearFollow.hidden = !fighter;
+    setTextIfChanged(followStatus, fighter
+      ? `Following ${fighter.displayIndex} · ${fighter.name} · ${fighter.alive ? `${fighter.health - fighter.hitsTaken}/${fighter.health} hearts` : "Fallen"}`
+      : "Numbers match the roster. Tap a Viking or a name to follow.");
+  }
+
   private drawLabels(fighters: Fighter[]) {
     const ctx = this.context;
-    const occupied: { x: number; y: number; width: number }[] = [];
-    for (const fighter of [...fighters].sort((a, b) => a.y - b.y)) {
-      const width = fighter.nameplate.width / 2;
-      const x = Math.max(2, Math.min(this.canvasWidth - width - 2, fighter.x - width / 2));
-      const headY = fighter.y - fighter.radius * 1.35;
-      let y = Math.max(2, headY - 31);
-      for (let attempt = 0; attempt < 4; attempt++) {
-        const overlaps = occupied.some(other => x < other.x + other.width + 3 && x + width + 3 > other.x && Math.abs(y - other.y) < 31);
-        if (!overlaps || y < 33) break;
-        y -= 31;
+    const anchors = fighters.map(f => ({
+      id: f.id,
+      x: this.centerX + (f.x - this.centerX) * this.viewZoom,
+      y: this.centerY + (f.y - f.radius * 1.35 - this.centerY) * this.viewZoom,
+      width: f.nameplate.width / 2,
+      compactWidth: f.compactNameplate.width / 2,
+      badgeWidth: f.badgeNameplate.width / 2
+    }));
+    this.labelPlacements = layoutNameplates(anchors, {
+      width: this.canvasWidth, height: this.canvasHeight, top: finalDuel.hidden ? 4 : 80
+    }, this.labelPlacements, this.followedId);
+    if (this.followedId === null) {
+      setTextIfChanged(followStatus, this.labelPlacements.length < fighters.length
+        ? `Crowded arena: ${this.labelPlacements.length} labels shown. Find all ${fighters.length} survivors in the roster.`
+        : "Numbers match the roster. Tap a Viking or a name to follow.");
+    }
+    const byId = new Map(fighters.map(f => [f.id, f]));
+    // Draw every tether first so a later fighter's line never crosses over a name.
+    for (const label of this.labelPlacements) {
+      const fighter = byId.get(label.id)!;
+      const x = Math.max(label.x + 4, Math.min(label.x + label.width - 4, label.anchorX));
+      const y = label.anchorY >= label.y + LABEL_HEIGHT ? label.y + LABEL_HEIGHT : label.y;
+      ctx.strokeStyle = fighter.id === this.followedId ? "#ffe599" : fighter.theme.base;
+      ctx.globalAlpha = fighter.id === this.followedId ? 0.95 : 0.55;
+      ctx.lineWidth = fighter.id === this.followedId ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(label.anchorX, label.anchorY); ctx.lineTo(x, y); ctx.stroke();
+      ctx.beginPath(); ctx.arc(label.anchorX, label.anchorY, 2, 0, Math.PI * 2); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    for (const label of this.labelPlacements) {
+      const fighter = byId.get(label.id)!;
+      const plate = label.kind === "full" ? fighter.nameplate : label.kind === "compact" ? fighter.compactNameplate : fighter.badgeNameplate;
+      const { x, y, width } = label;
+      ctx.drawImage(plate, x, y, width, 20);
+      if (fighter.id === this.followedId) {
+        ctx.strokeStyle = "#ffe599"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(x - 1, y - 1, width + 2, 22, 5); ctx.stroke();
       }
-      occupied.push({ x, y, width });
-      if (headY - y > 40) {
-        ctx.strokeStyle = "rgba(240, 229, 209, 0.35)";
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(fighter.x, headY); ctx.lineTo(x + width / 2, y + 27); ctx.stroke();
-      }
-      ctx.drawImage(fighter.nameplate, x, y, width, 20);
+      // A dark backing keeps health readable over both stone and storm.
+      ctx.fillStyle = "rgba(12,17,31,.92)";
+      ctx.fillRect(x + width / 2 - 16, y + 20, 32, 9);
       for (let i = 0; i < fighter.health; i++) {
         ctx.fillStyle = i < fighter.health - fighter.hitsTaken ? "#f55070" : "#493442";
-        ctx.strokeStyle = "#141623";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(x + width / 2 - 14 + i * 10, y + 22, 8, 5, 2);
-        ctx.fill(); ctx.stroke();
+        ctx.fillRect(x + width / 2 - 14 + i * 10, y + 22, 8, 5);
       }
     }
   }
 
   private resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (rect.width <= 0 || rect.height <= 0) return;
+    if (rect.width === this.canvasWidth && rect.height === this.canvasHeight &&
+        canvas.width === Math.floor(rect.width * dpr) && canvas.height === Math.floor(rect.height * dpr)) return;
     const hadSize = this.canvasWidth > 0 && this.canvasHeight > 0;
     const prevMinDimension = hadSize ? Math.min(this.canvasWidth, this.canvasHeight) : Math.min(rect.width, rect.height);
     const prevCenterX = this.centerX;
     const prevCenterY = this.centerY;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
     if (typeof this.context.resetTransform === "function") {
@@ -1225,6 +1364,7 @@ class BattleGame {
       this.context.setTransform(1, 0, 0, 1, 0, 0);
     }
     this.context.scale(dpr, dpr);
+    this.labelPlacements = [];
     this.canvasWidth = rect.width;
     this.canvasHeight = rect.height;
     this.centerX = rect.width / 2;
@@ -1309,10 +1449,17 @@ startButton.addEventListener("click", async () => {
   const names = textarea.value.split(/\r?\n/).map(name => name.trim()).filter(Boolean);
   const uniqueNames = Array.from(new Set(names));
   if (uniqueNames.length < 2) {
-    statusBar.textContent = "Add at least two contenders to start the battle.";
+    setupError.textContent = "Enter at least two different names to start a battle.";
+    setupError.hidden = false;
+    textarea.setAttribute("aria-invalid", "true");
+    textarea.focus();
     return;
   }
+  setupError.hidden = true;
+  textarea.removeAttribute("aria-invalid");
   game.start(uniqueNames, spawnModeSelect.value as SpawnMode);
 });
+
+document.getElementById("rematchBtn")!.addEventListener("click", () => game?.rematch());
 
 void initializeBattle();

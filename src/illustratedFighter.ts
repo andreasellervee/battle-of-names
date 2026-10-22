@@ -50,6 +50,7 @@ export interface FighterPose {
   team: IllustratedTeam;
   time: number;
   walking?: boolean;
+  victory?: boolean;
   mirrored?: boolean;
   attack?: number;
   attackTarget?: { x: number; y: number };
@@ -112,7 +113,7 @@ export function drawIllustratedFighter(ctx: CanvasRenderingContext2D, assets: Il
   if (pose.layer !== "body") {
     ctx.save();
     ctx.translate(AXE_GRIP.x - spread, AXE_GRIP.y);
-    ctx.rotate(strike.angle);
+    ctx.rotate(pose.victory ? 0.65 : strike.angle);
     // Keep the original hold at rest; turn the cutting edge forward to strike.
     ctx.scale(strike.axeScaleX, 1);
     const axeSize = 0.78;
