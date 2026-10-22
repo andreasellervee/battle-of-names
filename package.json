@@ -19,8 +19,5 @@
     "@types/tinycolor2": "^1.4.6",
     "typescript": "^7.0.2",
     "vite": "^8.3.0"
-  },
-  "overrides": {
-    "fsevents": "file:./vendor/fsevents-disabled"
   }
 }
