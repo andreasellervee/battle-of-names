@@ -1,5 +1,14 @@
+import { setTextIfChanged } from "./uiUpdates";
+import { ArenaRenderer } from "./arenaRenderer";
+import { SHIRT_PALETTE } from "./shirtPalette";
+import { evenSpawnPositions, randomSpawnPositions, spacedArenaRadius } from "./spawnPositions";
+import { layoutNameplates, LABEL_HEIGHT, type LabelPlacement } from "./nameplateLayout";
+import { MELEE_DURATION_MS, MELEE_IMPACT_MS } from "./meleeAnimation";
 import tinycolor from "tinycolor2";
+import { createFallenViking, drawIllustratedFighter, loadIllustratedCharacters, type IllustratedCharacterAssets, type IllustratedTeam } from "./illustratedFighter";
+import { BloodEffects } from "./bloodEffects";
 import { predefinedFights } from "./data/predefinedFights";
+import { RUNE_GLYPHS, type FighterTheme } from "./visualIdentityData";
 
 type GamePhase = "idle" | "countdown" | "running" | "finished";
 type SpawnMode = "random" | "even" | "clusters" | "center" | "storm";
@@ -22,20 +31,18 @@ interface Fighter {
   alive: boolean;
   eliminatedAt?: number;
   eliminationReason?: string;
-  orientation: number;
-  weaponSwingPhase: number;
-  weaponSwingSpeed: number;
+  mirrored: boolean;
+  team: IllustratedTeam;
+  lastAttackAt: number;
+  combatUntil: number;
+  strike?: { targetId: number; x: number; y: number; resolved: boolean };
+  nameplate: HTMLCanvasElement;
+  compactNameplate: HTMLCanvasElement;
+  badgeNameplate: HTMLCanvasElement;
   wanderAngle: number;
   wanderTimer: number;
-  runeRotation: number;
-  pulsePhase: number;
-  trailSegments: TrailSegment[];
-  trailCooldown: number;
-  sprite: HTMLCanvasElement;
   displayIndex: number;
   runeChar: string;
-  hitOverlayUntil: number;
-  hitSquash: number;
 }
 
 interface ResultEntry {
@@ -47,39 +54,15 @@ interface ResultEntry {
   eliminationReason: string;
 }
 
-interface HitEffect {
-  x: number;
-  y: number;
-  bornAt: number;
-  duration: number;
-  intensity: number;
-  seed: number;
-}
-
-interface TrailSegment {
-  x: number;
-  y: number;
-  created: number;
-  angle: number;
-  alpha: number;
-}
-
-interface FighterTheme {
-  name: string;
-  base: string;
-  edge: string;
-  highlight: string;
-  rune: string;
-  crest: string;
-}
-
 interface ScoreboardEntry {
   root: HTMLLIElement;
   gem: HTMLSpanElement;
-  name: HTMLSpanElement;
-  hearts: HTMLDivElement;
+  name: HTMLButtonElement;
+  hearts: HTMLSpanElement[];
+  feedback: HTMLSpanElement;
+  lastHitsTaken: number;
   container: "alive" | "fallen";
-  pulseTimeout?: number;
+  pulseAnimation?: Animation;
 }
 
 interface ScoreboardDOM {
@@ -89,9 +72,9 @@ interface ScoreboardDOM {
 }
 
 const COUNTDOWN_SECONDS = 2;
-const MAX_GAME_DURATION_MS = 13_500;
 const ARENA_SHRINK_RATE = 26;
-const HIT_COOLDOWN_MS = 300;
+// Expire before the next exchange so either fighter can initiate it.
+const HIT_COOLDOWN_MS = 160;
 const OUTSIDE_GRACE_MS = 2_000;
 const STORM_EXTRA_GRACE_MS = 3_500;
 const MAX_SPEED = 350;
@@ -101,73 +84,17 @@ const AVOID_WEIGHT = 0.9;
 const CENTER_WEIGHT = 0.28;
 const WANDER_WEIGHT = 0.45;
 const PURSUIT_WEIGHT = 1.4;
-const ORIENTATION_LERP = 0.18;
-const TRAIL_LIFETIME_MS = 220;
-const TRAIL_SPAWN_INTERVAL = 45;
-const FIGHTER_THEMES: FighterTheme[] = [
-  {
-    name: "Ruby",
-    base: "#FF3864",
-    edge: "#64091F",
-    highlight: "#FFD8E0",
-    rune: "#FF6A88",
-    crest: "#F9B042"
-  },
-  {
-    name: "Sapphire",
-    base: "#3B82F6",
-    edge: "#08204E",
-    highlight: "#D4E7FF",
-    rune: "#5DA4FF",
-    crest: "#F4E4C1"
-  },
-  {
-    name: "Emerald",
-    base: "#00C896",
-    edge: "#024F3C",
-    highlight: "#C3FFEE",
-    rune: "#3DE0B5",
-    crest: "#F1F7A1"
-  },
-  {
-    name: "Amethyst",
-    base: "#9B5DE5",
-    edge: "#2D0D58",
-    highlight: "#E9D4FF",
-    rune: "#B07CFF",
-    crest: "#FFD1EB"
-  },
-  {
-    name: "Topaz",
-    base: "#FFB400",
-    edge: "#633C00",
-    highlight: "#FFEAB5",
-    rune: "#FFC94A",
-    crest: "#FFEEDD"
-  },
-  {
-    name: "Opal",
-    base: "#3DE0FF",
-    edge: "#0A4A5A",
-    highlight: "#E0FAFF",
-    rune: "#6BEFFF",
-    crest: "#F1F8FF"
-  },
-  {
-    name: "Garnet",
-    base: "#C81D25",
-    edge: "#47060B",
-    highlight: "#FFD5D1",
-    rune: "#E23C45",
-    crest: "#F6C08E"
-  }
-];
-
-const RUNE_GLYPHS = ["ᚠ", "ᚢ", "ᚦ", "ᚨ", "ᚱ", "ᚲ", "ᚺ"];
-
+const BATTLE_THEMES: FighterTheme[] = SHIRT_PALETTE.map(palette => ({
+  name: palette.name,
+  base: palette.accent,
+  edge: tinycolor(palette.color).darken(24).toHexString(),
+  highlight: tinycolor(palette.accent).lighten(25).toHexString(),
+  rune: palette.accent,
+  crest: "#f4e4c1"
+}));
 const SPAWN_MODE_DESCRIPTIONS: Record<SpawnMode, string> = {
   random: "All contenders spawn in random positions inside the arena.",
-  even: "Fighters spawn evenly spaced around the circle.",
+  even: "Fighters spread across safe ground; larger lineups fill the interior.",
   clusters: "Contenders arrive in small clusters of 2-3 per side.",
   center: "All fighters drop near the middle as the circle shrinks quickly.",
   storm: "Everyone spawns outside the safe zone and must rush into the arena."
@@ -194,94 +121,91 @@ if (!appRoot) {
   throw new Error("App root element not found");
 }
 
-// The semantic hero, nav, and sections help crawlers understand the narrative of the experience.
 appRoot.innerHTML = `
   <div class="panel">
     <header class="hero" aria-labelledby="battleTitle">
-      <div class="hero__content">
-        <p class="hero__eyebrow">Arcade name duels</p>
+      <div>
+        <p class="hero__eyebrow">One arena. One survivor.</p>
         <h1 id="battleTitle">Battle of Names</h1>
-        <p class="hero__lead">
-          Enter contenders, choose your spawn, and watch the animated arena resolve a winner with neon sparks, shrinking
-          zones, and a dramatic elimination log.
-        </p>
-        <nav class="hero__nav" aria-label="Quick navigation">
-          <a href="#inputPanel">Prep contenders</a>
-          <a href="#battleCanvas">Watch the arena</a>
-          <a href="#resultsPanel">Read the log</a>
-        </nav>
+        <p class="hero__lead">Gather your contenders. Let the Vikings decide.</p>
       </div>
-      <figure class="hero__visual">
-        <img
-          src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80"
-          alt="Neon arena floor lit by glowing combatants and trails"
-          width="420"
-          height="280"
-          loading="lazy"
-        />
-        <figcaption>Pulse-lit arena energy matches the cinematic elimination feel.</figcaption>
-      </figure>
+      <a class="hero__link" href="#inputPanel" id="prepLink">Prepare battle <span aria-hidden="true">↗</span></a>
     </header>
     <main class="layout panel-main" aria-label="Name picker battle interface">
-      <article class="controls-article sidebar">
-        <section class="input-panel" id="inputPanel">
-          <label class="select-label" for="fightThemeSelect">
-            Select Fight Theme (optional)
-            <select id="fightThemeSelect">
-              ${fightThemeOptions}
-            </select>
-          </label>
-          <label class="input-label" for="namesInput">Enter contenders</label>
-          <textarea id="namesInput" placeholder="One name per line..."></textarea>
-          <div class="controls">
-            <button id="startBtn">Start Battle</button>
-            <label class="select-label">
-              Spawn Points
-              <select id="spawnMode">
-                <option value="random" data-description="${SPAWN_MODE_DESCRIPTIONS.random}">Random</option>
-                <option value="even" data-description="${SPAWN_MODE_DESCRIPTIONS.even}" selected>Even Spread</option>
-                <option value="clusters" data-description="${SPAWN_MODE_DESCRIPTIONS.clusters}">Clustered Teams</option>
-                <option value="center" data-description="${SPAWN_MODE_DESCRIPTIONS.center}">Center Drop</option>
-                <option value="storm" data-description="${SPAWN_MODE_DESCRIPTIONS.storm}">Storm Spawn</option>
-              </select>
+      <aside class="sidebar">
+        <details class="setup-panel" id="setupPanel">
+          <summary><span>Battle setup</span><span id="setupSummary">Choose your contenders</span></summary>
+          <section class="input-panel" id="inputPanel">
+            <label class="select-label" for="fightThemeSelect">
+              Fight theme <span class="optional">Optional</span>
+              <select id="fightThemeSelect">${fightThemeOptions}</select>
             </label>
-          </div>
-          <div class="status-bar" id="statusBar" aria-live="polite"></div>
-        </section>
-        <section class="scoreboard-panel" aria-labelledby="scoreboardTitle">
-          <h2 id="scoreboardTitle" class="scoreboard-title">Arena Roster</h2>
+            <label class="input-label" for="namesInput">Enter contenders</label>
+            <textarea id="namesInput" placeholder="One name per line…" rows="5" aria-describedby="setupError"></textarea>
+            <p id="setupError" class="setup-error" role="alert" hidden></p>
+            <div class="controls">
+              <label class="select-label">Spawn points
+                <select id="spawnMode">
+                  <option value="random">Random</option>
+                  <option value="even" selected>Even Spread</option>
+                  <option value="clusters">Clustered Teams</option>
+                  <option value="center">Center Drop</option>
+                  <option value="storm">Storm Spawn</option>
+                </select>
+              </label>
+              <button id="startBtn">Start Battle</button>
+            </div>
+          </section>
+        </details>
+        <details class="scoreboard-panel" id="rosterPanel">
+          <summary class="scoreboard-title">Arena roster</summary>
           <ul id="scoreboardActive" class="scoreboard scoreboard--active"></ul>
           <div id="scoreboardFallenSection" class="scoreboard-fallen" hidden>
             <h3 class="scoreboard-fallen__title">Fallen</h3>
             <ul id="scoreboardFallen" class="scoreboard scoreboard--fallen"></ul>
           </div>
-        </section>
-      </article>
-      <article class="arena-article main-column">
-        <section class="canvas-panel" aria-label="Animated battle arena">
-          <div class="canvas-wrapper">
-            <canvas id="battleCanvas"></canvas>
-            <div id="overlayText" class="overlay-text"></div>
+        </details>
+      </aside>
+      <section class="canvas-panel" id="arenaPanel" aria-label="Animated battle arena" tabindex="-1">
+        <div class="arena-toolbar">
+          <h2>The arena</h2>
+          <span id="battleCount">Awaiting contenders</span>
+        </div>
+        <div class="canvas-wrapper">
+          <canvas id="battleCanvas" aria-label="Viking battle animation"></canvas>
+          <div id="idlePrompt" class="idle-prompt">
+            <span class="stage-rune" aria-hidden="true">ᛟ</span>
+            <h2>A name becomes a legend</h2>
+            <p>Two or more contenders. A shrinking arena.<br>Only one will remain.</p>
+            <button id="prepareBtn">Prepare battle</button>
           </div>
-        </section>
-        <section class="results-panel results-panel--empty" id="resultsPanel">
-          <h2>Battle Log</h2>
-          <div class="winner-banner" id="winnerBanner"></div>
-          <div class="results-placeholder" id="resultsPlaceholder">
-            Results will appear here once a battle concludes.
-          </div>
-          <ol id="resultsList"></ol>
-        </section>
-      </article>
+          <div id="overlayText" class="overlay-text" aria-live="polite"></div>
+          <div id="finalDuel" class="final-duel" role="status" hidden>Final duel <span>Only two remain</span></div>
+          <section id="victoryCard" class="victory-card" aria-labelledby="victoryName" hidden>
+            <p class="victory-eyebrow">Last Viking standing</p>
+            <canvas id="victoryPortrait" width="320" height="260" aria-hidden="true"></canvas>
+            <h2 id="victoryName" tabindex="-1"></h2>
+            <p id="victoryStats"></p>
+            <div class="victory-actions">
+              <button id="rematchBtn">Rematch</button>
+              <button id="editBtn" class="button-secondary">Edit contenders</button>
+            </div>
+          </section>
+        </div>
+        <div class="status-bar" id="statusBar" role="status" aria-live="polite"></div>
+        <div class="follow-bar"><p id="followStatus" role="status">Numbers match the roster. Tap a Viking or a name to follow.</p><button id="clearFollow" class="button-secondary" hidden>Stop following</button></div>
+        <div class="arena-legend" aria-label="Arena guide"><span><i class="arena-legend-safe"></i>Safe ground</span><span><i class="arena-legend-storm"></i>Storm</span><span class="arena-legend-warning">Exposure ring fills before elimination</span></div>
+      </section>
+      <section class="results-panel results-panel--empty" id="resultsPanel">
+        <h2>Battle Log</h2>
+        <div class="winner-banner" id="winnerBanner" hidden></div>
+        <div class="results-placeholder" id="resultsPlaceholder">Every legend starts with a battle. Your results will appear here.</div>
+        <ol id="resultsList"></ol>
+      </section>
     </main>
     <footer class="flavor-bar">
-      💬 Tip: "Legends say only one name survives the circle..."
-      <p class="flavor-disclaimer">
-        Built fully with Artificial Intelligence — check the open-source repo
-        <a href="https://github.com/andreasellervee/battle-of-names" target="_blank" rel="noopener noreferrer"
-          >here</a
-        >.
-      </p>
+      <span>May the last name standing be yours.</span>
+      <div><a href="/visual-identity/">Visual identity</a> · <a href="https://github.com/andreasellervee/battle-of-names" target="_blank" rel="noopener noreferrer">Built with AI · View source</a></div>
     </footer>
   </div>
 `;
@@ -300,6 +224,34 @@ const resultsPlaceholder = document.querySelector<HTMLDivElement>("#resultsPlace
 const scoreboardAliveElement = document.querySelector<HTMLUListElement>("#scoreboardActive")!;
 const scoreboardFallenElement = document.querySelector<HTMLUListElement>("#scoreboardFallen")!;
 const scoreboardFallenSectionElement = document.querySelector<HTMLDivElement>("#scoreboardFallenSection")!;
+
+const setupPanel = document.querySelector<HTMLDetailsElement>("#setupPanel")!;
+const setupError = document.querySelector<HTMLElement>("#setupError")!;
+const setupSummary = document.querySelector<HTMLElement>("#setupSummary")!;
+const arenaPanel = document.querySelector<HTMLElement>("#arenaPanel")!;
+const battleCount = document.querySelector<HTMLElement>("#battleCount")!;
+const idlePrompt = document.querySelector<HTMLElement>("#idlePrompt")!;
+const finalDuel = document.querySelector<HTMLElement>("#finalDuel")!;
+const victoryCard = document.querySelector<HTMLElement>("#victoryCard")!;
+const victoryName = document.querySelector<HTMLElement>("#victoryName")!;
+const victoryStats = document.querySelector<HTMLElement>("#victoryStats")!;
+const victoryPortrait = document.querySelector<HTMLCanvasElement>("#victoryPortrait")!;
+const followStatus = document.querySelector<HTMLElement>("#followStatus")!;
+const clearFollow = document.querySelector<HTMLButtonElement>("#clearFollow")!;
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+setupPanel.open = window.matchMedia("(min-width: 900px)").matches;
+
+function editContenders() {
+  setupPanel.open = true;
+  textarea.focus({ preventScroll: true });
+  setupPanel.scrollIntoView({ block: "nearest", behavior: "instant" });
+}
+for (const id of ["prepareBtn", "prepLink", "editBtn"]) {
+  document.getElementById(id)!.addEventListener("click", event => {
+    event.preventDefault();
+    editContenders();
+  });
+}
 
 const ctx = canvas.getContext("2d");
 if (!ctx) {
@@ -336,6 +288,8 @@ fightThemeSelect.addEventListener("change", () => {
   if (!names) {
     return;
   }
+  setupError.hidden = true;
+  textarea.removeAttribute("aria-invalid");
   isApplyingTheme = true;
   textarea.value = names.join("\n");
   isApplyingTheme = false;
@@ -343,6 +297,8 @@ fightThemeSelect.addEventListener("change", () => {
 });
 
 textarea.addEventListener("input", () => {
+  setupError.hidden = true;
+  textarea.removeAttribute("aria-invalid");
   if (isApplyingTheme) {
     return;
   }
@@ -370,8 +326,16 @@ class BattleGame {
   private centerY = 0;
   private canvasWidth = 0;
   private canvasHeight = 0;
-  private lightningSeeds: number[] = Array.from({ length: 12 }, () => Math.random() * Math.PI * 2);
-  private hitEffects: HitEffect[] = [];
+  private arenaRenderer = new ArenaRenderer();
+  private blood = new BloodEffects(24);
+  private fallenSprites = new Map<IllustratedTeam, HTMLCanvasElement>();
+  private finishedAt = 0;
+  private finalDuelAt = 0;
+  private followedId: number | null = null;
+  private labelPlacements: LabelPlacement[] = [];
+  private viewZoom = 1;
+  private lastLineup: string[] = [];
+  private lastSpawnMode: SpawnMode = "even";
   private scoreboardEntries: Map<number, ScoreboardEntry> = new Map();
 
   constructor(
@@ -382,18 +346,50 @@ class BattleGame {
     private readonly winnerElement: HTMLDivElement,
     private readonly resultsListElement: HTMLOListElement,
     private readonly resultsPlaceholderElement: HTMLDivElement,
-    private readonly scoreboard: ScoreboardDOM
+    private readonly scoreboard: ScoreboardDOM,
+    private readonly artwork: IllustratedCharacterAssets
   ) {
     this.resizeCanvas();
+    // Observe the actual arena, including grid changes and opening setup on phones.
+    new ResizeObserver(() => this.resizeCanvas()).observe(canvas);
     window.addEventListener("resize", () => this.resizeCanvas());
+    canvas.addEventListener("click", event => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left, y = event.clientY - rect.top;
+      const label = this.labelPlacements.find(p => x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + LABEL_HEIGHT);
+      const nearest = this.fighters.filter(f => f.alive).map(f => ({
+        fighter: f,
+        distance: Math.hypot(this.centerX + (f.x - this.centerX) * this.viewZoom - x, this.centerY + (f.y - this.centerY) * this.viewZoom - y)
+      })).sort((a, b) => a.distance - b.distance)[0];
+      const id = label?.id ?? (nearest && nearest.distance < nearest.fighter.radius * this.viewZoom * 1.6 ? nearest.fighter.id : null);
+      this.follow(id === this.followedId ? null : id);
+    });
+    clearFollow.addEventListener("click", () => this.follow(null));
     this.setStatus("Add some names and hit Start Battle!");
   }
 
   start(names: string[], spawnMode: SpawnMode) {
     this.cancelLoop();
+    this.labelPlacements = [];
+    this.follow(null);
+    this.lastLineup = [...names];
+    this.lastSpawnMode = spawnMode;
+    setupPanel.open = false;
+    setupSummary.textContent = `${names.length} contenders · ${Array.from(spawnModeSelect.options).find(option => option.value === spawnMode)!.text}`;
+    idlePrompt.hidden = true;
+    victoryCard.hidden = true;
+    finalDuel.hidden = true;
+    this.finalDuelAt = 0;
+    battleCount.textContent = `${names.length} contenders`;
+    startButton.disabled = true;
+    startButton.textContent = "Battle in progress";
+    for (const input of [textarea, spawnModeSelect, fightThemeSelect]) input.disabled = true;
+    // Capture the final layout before spawning; closing setup must not resize a running round.
+    this.resizeCanvas();
     this.fighters = [];
     this.results = [];
-    this.hitEffects = [];
+    this.blood.clear();
+    this.finishedAt = 0;
     this.phase = "countdown";
     const now = performance.now();
     this.countdownEndsAt = now + COUNTDOWN_SECONDS * 1000;
@@ -403,11 +399,13 @@ class BattleGame {
     this.winnerElement.textContent = "";
     this.resultsListElement.innerHTML = "";
     this.resultsPlaceholderElement.hidden = false;
+    this.resultsPlaceholderElement.textContent = "The battle is underway. Final standings appear when one Viking remains.";
     this.resultsElement.classList.add("results-panel--empty");
     this.setStatus("Battle starting...");
-    this.lightningSeeds = this.lightningSeeds.map(() => Math.random() * Math.PI * 2);
     const minDimension = Math.min(this.canvasWidth, this.canvasHeight);
-    const initialRadius = minDimension / 2.6;
+    const fighterRadius = Math.max(18, Math.min(32, minDimension / 18));
+    const initialRadius = spawnMode === "even" || spawnMode === "random"
+      ? spacedArenaRadius(minDimension, names.length, fighterRadius) : minDimension / 2.6;
     this.arena = {
       radius: initialRadius,
       minRadius: minDimension / 8
@@ -416,6 +414,14 @@ class BattleGame {
     this.prepareFighters(names, spawnMode);
     this.buildScoreboard();
     this.loop(now);
+    if (!isVisualPreview) {
+      arenaPanel.focus({ preventScroll: true });
+      arenaPanel.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+  }
+
+  rematch() {
+    if (this.phase === "finished") this.start(this.lastLineup, this.lastSpawnMode);
   }
 
   private prepareFighters(names: string[], spawnMode: SpawnMode) {
@@ -431,8 +437,8 @@ class BattleGame {
     const spawnTimestamp = performance.now();
 
     names.forEach((name, i) => {
-      const theme = FIGHTER_THEMES[i % FIGHTER_THEMES.length];
-      const sprite = this.createFighterSprite(theme);
+      const theme = BATTLE_THEMES[i % BATTLE_THEMES.length];
+      const nameplate = this.createNameplate(name, i + 1, theme.base);
       const runeChar = RUNE_GLYPHS[i % RUNE_GLYPHS.length];
       const targetPosition = positions[i] ?? { x: this.centerX, y: this.centerY };
       const x = Number.isFinite(targetPosition.x) ? targetPosition.x : this.centerX;
@@ -440,7 +446,6 @@ class BattleGame {
 
       let vx = (Math.random() - 0.5) * MAX_SPEED * 0.2;
       let vy = (Math.random() - 0.5) * MAX_SPEED * 0.2;
-      let orientation = Math.random() * Math.PI * 2;
       let wanderTimer = 0.6 + Math.random() * 1.6;
       let outsideSince: number | null = null;
 
@@ -451,13 +456,10 @@ class BattleGame {
         const rushSpeed = MAX_SPEED * 0.75;
         vx = (toCenterX / distance) * rushSpeed;
         vy = (toCenterY / distance) * rushSpeed;
-        orientation = Math.atan2(toCenterY, toCenterX);
         wanderTimer = 0.35 + Math.random() * 0.25;
         outsideSince = spawnTimestamp + STORM_EXTRA_GRACE_MS;
       } else if (spawnMode === "center") {
         wanderTimer = 0.3 + Math.random() * 0.5;
-      } else if (spawnMode === "even") {
-        orientation = Math.atan2(this.centerY - y, this.centerX - x);
       } else if (spawnMode === "clusters") {
         wanderTimer = 0.5 + Math.random() * 1.0;
       }
@@ -475,23 +477,20 @@ class BattleGame {
         health: 3,
         hitsTaken: 0,
         hitsInflicted: 0,
-        lastDamageAt: 0,
+        lastDamageAt: -Infinity,
         outsideSince,
         alive: true,
-        orientation,
-        weaponSwingPhase: Math.random() * Math.PI * 2,
-        weaponSwingSpeed: 4 + Math.random() * 4,
+        mirrored: x > this.centerX,
+        team: SHIRT_PALETTE[i % SHIRT_PALETTE.length].id,
+        lastAttackAt: -Infinity,
+        combatUntil: 0,
+        nameplate,
+        compactNameplate: this.createNameplate(name, i + 1, theme.base, 68),
+        badgeNameplate: this.createNameplate("", i + 1, theme.base, 0),
         wanderAngle: Math.random() * Math.PI * 2,
         wanderTimer,
-        runeRotation: Math.random() * Math.PI * 2,
-        pulsePhase: Math.random() * Math.PI * 2,
-        trailSegments: [],
-        trailCooldown: 0,
-        sprite,
         displayIndex: i + 1,
-        runeChar,
-        hitOverlayUntil: 0,
-        hitSquash: 0
+        runeChar
       });
     });
   }
@@ -505,50 +504,11 @@ class BattleGame {
     const safeRing = Math.max(fighterRadius * 3, Math.min(spawnRadius, this.arena.radius - fighterRadius * 1.4));
 
     if (spawnMode === "random") {
-      const taken: { x: number; y: number }[] = [];
-      const maxAttempts = 48;
-      for (let i = 0; i < count; i += 1) {
-        let chosenX = this.centerX;
-        let chosenY = this.centerY;
-        let placed = false;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          const angle = Math.random() * Math.PI * 2;
-          const distance = Math.random() * spawnRadius;
-          const candidateX = this.centerX + Math.cos(angle) * distance;
-          const candidateY = this.centerY + Math.sin(angle) * distance;
-          const spacing = fighterRadius * 2.4;
-          const clear = taken.every((spot) => Math.hypot(candidateX - spot.x, candidateY - spot.y) > spacing);
-          if (clear) {
-            chosenX = candidateX;
-            chosenY = candidateY;
-            taken.push({ x: chosenX, y: chosenY });
-            placed = true;
-            break;
-          }
-        }
-        if (!placed) {
-          const fallbackAngle = (2 * Math.PI * i) / count;
-          const fallbackDistance = safeRing;
-          chosenX = this.centerX + Math.cos(fallbackAngle) * fallbackDistance;
-          chosenY = this.centerY + Math.sin(fallbackAngle) * fallbackDistance;
-          taken.push({ x: chosenX, y: chosenY });
-        }
-        positions.push({ x: chosenX, y: chosenY });
-      }
-      return positions;
+      return randomSpawnPositions(count, this.centerX, this.centerY, this.arena.radius, fighterRadius);
     }
 
     if (spawnMode === "even") {
-      const ringRadius = safeRing;
-      for (let i = 0; i < count; i += 1) {
-        const baseAngle = (2 * Math.PI * i) / count;
-        const jitterAngle = baseAngle + (Math.random() - 0.5) * (Math.PI / Math.max(4, count));
-        const jitterDistance = Math.random() * fighterRadius * 0.8;
-        const distance = ringRadius - Math.random() * fighterRadius * 0.6;
-        const x = this.centerX + Math.cos(jitterAngle) * Math.max(distance, fighterRadius * 2.2) + Math.cos(jitterAngle + Math.PI / 2) * jitterDistance;
-        const y = this.centerY + Math.sin(jitterAngle) * Math.max(distance, fighterRadius * 2.2) + Math.sin(jitterAngle + Math.PI / 2) * jitterDistance;
-        positions.push({ x, y });
-      }
+      return evenSpawnPositions(count, this.centerX, this.centerY, this.arena.radius, fighterRadius);
     } else if (spawnMode === "clusters") {
       const clusterCount = Math.max(1, Math.ceil(count / 3));
       const clusterRadius = Math.max(fighterRadius * 4, safeRing * 0.85);
@@ -623,64 +583,35 @@ class BattleGame {
     return positions;
   }
 
-  private createFighterSprite(theme: FighterTheme): HTMLCanvasElement {
-    const size = 200;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const context = canvas.getContext("2d");
-    if (!context) {
-      throw new Error("Failed to create fighter sprite context");
-    }
-    context.save();
-    context.translate(size / 2, size / 2);
-    const radius = size * 0.36;
-    const centerColor = tinycolor(theme.base).lighten(22).toHexString();
-    const midColor = tinycolor(theme.base).lighten(5).toHexString();
-    const edgeColor = tinycolor(theme.base).darken(18).toHexString();
-
-    const gradient = context.createRadialGradient(0, -radius * 0.25, radius * 0.1, 0, 0, radius);
-    gradient.addColorStop(0, centerColor);
-    gradient.addColorStop(0.55, midColor);
-    gradient.addColorStop(1, edgeColor);
-    context.fillStyle = gradient;
+  private createNameplate(name: string, index: number, color: string, maxTextWidth = 116) {
+    const plate = document.createElement("canvas");
+    const context = plate.getContext("2d")!;
+    context.font = "600 12px system-ui, sans-serif";
+    const fullText = maxTextWidth === 0 ? `${index}` : `${index} · ${name}`;
+    const letters = Array.from(fullText).slice(0, 40);
+    while (letters.length > 1 && maxTextWidth > 0 && context.measureText(letters.join("")).width > maxTextWidth) letters.pop();
+    let text = letters.join("");
+    if (text !== fullText) { letters.pop(); text = letters.join("") + "…"; }
+    const width = Math.max(36, Math.ceil(context.measureText(text).width) + 16);
+    plate.width = width * 2;
+    plate.height = 40;
+    context.scale(2, 2);
+    context.fillStyle = "rgba(12, 17, 31, 0.92)";
     context.beginPath();
-    context.arc(0, 0, radius, 0, Math.PI * 2);
+    context.roundRect(0, 0, width, 20, 5);
     context.fill();
-
-    context.globalAlpha = 0.35;
-    context.fillStyle = theme.highlight;
-    context.beginPath();
-    context.ellipse(-radius * 0.28, -radius * 0.3, radius * 0.55, radius * 0.38, Math.PI / 4, 0, Math.PI * 2);
-    context.fill();
-    context.globalAlpha = 1;
-
-    for (let i = 0; i < 42; i += 1) {
-      const sparkleAngle = Math.random() * Math.PI * 2;
-      const sparkleDist = Math.random() * radius * 0.9;
-      const sx = Math.cos(sparkleAngle) * sparkleDist;
-      const sy = Math.sin(sparkleAngle) * sparkleDist;
-      const sparkleSize = Math.random() * 4 + 2;
-      context.save();
-      context.translate(sx, sy);
-      context.rotate(Math.random() * Math.PI);
-      const sparkleGradient = context.createRadialGradient(0, 0, 0, 0, 0, sparkleSize);
-      sparkleGradient.addColorStop(0, "rgba(255,255,255,0.85)");
-      sparkleGradient.addColorStop(1, "rgba(255,255,255,0)");
-      context.fillStyle = sparkleGradient;
-      context.fillRect(-sparkleSize, -sparkleSize, sparkleSize * 2, sparkleSize * 2);
-      context.restore();
-    }
-
-    context.restore();
-    return canvas;
+    context.fillStyle = color;
+    context.fillRect(5, 6, 3, 8);
+    context.font = "600 12px system-ui, sans-serif";
+    context.fillStyle = "#fff4df";
+    context.textBaseline = "middle";
+    context.fillText(text, 11, 10);
+    return plate;
   }
 
   private buildScoreboard() {
     for (const entry of this.scoreboardEntries.values()) {
-      if (entry.pulseTimeout) {
-        window.clearTimeout(entry.pulseTimeout);
-      }
+      entry.pulseAnimation?.cancel();
     }
     this.scoreboardEntries.clear();
     this.scoreboard.alive.innerHTML = "";
@@ -695,20 +626,39 @@ class BattleGame {
       gem.style.background = `radial-gradient(circle at 35% 35%, ${tinycolor(fighter.theme.highlight)
         .setAlpha(0.9)
         .toRgbString()}, ${fighter.theme.base})`;
-      gem.textContent = fighter.runeChar;
-      const nameSpan = document.createElement("span");
+      gem.textContent = String(fighter.displayIndex);
+      const nameSpan = document.createElement("button");
+      nameSpan.type = "button";
+      nameSpan.setAttribute("aria-pressed", "false");
+      nameSpan.setAttribute("aria-label", `Follow ${fighter.displayIndex} · ${fighter.name}`);
+      nameSpan.addEventListener("click", () => {
+        this.follow(this.followedId === fighter.id ? null : fighter.id);
+        arenaPanel.focus({ preventScroll: true });
+        arenaPanel.scrollIntoView({ block: "start", behavior: "instant" });
+      });
       nameSpan.className = "scoreboard-entry__name";
       nameSpan.textContent = fighter.name;
       nameSpan.style.color = tinycolor(fighter.theme.base).lighten(28).toHexString();
       const hearts = document.createElement("div");
       hearts.className = "scoreboard-entry__hearts";
-      li.append(gem, nameSpan, hearts);
+      const heartNodes = Array.from({ length: fighter.health }, () => {
+        const heart = document.createElement("span");
+        heart.className = "scoreboard-entry__heart";
+        return heart;
+      });
+      hearts.append(...heartNodes);
+      const feedback = document.createElement("span");
+      feedback.className = "scoreboard-entry__feedback";
+      feedback.setAttribute("aria-hidden", "true");
+      li.append(gem, nameSpan, hearts, feedback);
       fragment.appendChild(li);
       this.scoreboardEntries.set(fighter.id, {
         root: li,
         gem,
         name: nameSpan,
-        hearts,
+        hearts: heartNodes,
+        feedback,
+        lastHitsTaken: -1,
         container: "alive"
       });
       this.updateScoreboardHealth(fighter);
@@ -721,14 +671,11 @@ class BattleGame {
   private updateScoreboardHealth(fighter: Fighter) {
     const entry = this.scoreboardEntries.get(fighter.id);
     if (!entry) return;
-    entry.hearts.innerHTML = "";
-    for (let i = 0; i < fighter.health; i += 1) {
-      const heart = document.createElement("span");
-      heart.className = "scoreboard-entry__heart";
-      if (i < fighter.hitsTaken) {
-        heart.classList.add("scoreboard-entry__heart--lost");
-      }
-      entry.hearts.appendChild(heart);
+    if (entry.lastHitsTaken !== fighter.hitsTaken) {
+      entry.hearts.forEach((heart, i) => {
+        heart.classList.toggle("scoreboard-entry__heart--lost", i < fighter.hitsTaken);
+      });
+      entry.lastHitsTaken = fighter.hitsTaken;
     }
 
     if (!fighter.alive) {
@@ -743,6 +690,7 @@ class BattleGame {
       }
     }
     this.updateFallenSectionVisibility();
+    if (fighter.id === this.followedId) this.updateFollowStatus();
   }
 
   private moveScoreboardEntry(entry: ScoreboardEntry, target: "alive" | "fallen") {
@@ -760,7 +708,8 @@ class BattleGame {
   }
 
   private updateFallenSectionVisibility() {
-    this.scoreboard.fallenSection.hidden = this.scoreboard.fallen.children.length === 0;
+    const empty = this.scoreboard.fallen.children.length === 0;
+    if (this.scoreboard.fallenSection.hidden !== empty) this.scoreboard.fallenSection.hidden = empty;
   }
 
   private clearWinnerHighlights() {
@@ -780,15 +729,14 @@ class BattleGame {
   private pulseScoreboard(fighterId: number, type: "scoreboard-entry--pulse-hit" | "scoreboard-entry--pulse-damage" | "scoreboard-entry--pulse-eliminated") {
     const entry = this.scoreboardEntries.get(fighterId);
     if (!entry) return;
-    entry.root.classList.remove("scoreboard-entry--pulse-hit", "scoreboard-entry--pulse-damage", "scoreboard-entry--pulse-eliminated");
-    void entry.root.offsetWidth;
-    entry.root.classList.add(type);
-    if (entry.pulseTimeout) {
-      window.clearTimeout(entry.pulseTimeout);
-    }
-    entry.pulseTimeout = window.setTimeout(() => {
-      entry.root.classList.remove(type);
-    }, type === "scoreboard-entry--pulse-eliminated" ? 650 : 420);
+    entry.pulseAnimation?.cancel();
+    const eliminated = type === "scoreboard-entry--pulse-eliminated";
+    entry.feedback.style.backgroundColor = type === "scoreboard-entry--pulse-hit" ? "#2ce0ac" : eliminated ? "#b7a8d6" : "#ff466e";
+    // Restart an opacity-only overlay animation without reading layout or timers.
+    entry.pulseAnimation = entry.feedback.animate(
+      [{ opacity: 0 }, { opacity: 0.32, offset: 0.2 }, { opacity: 0 }],
+      { duration: eliminated ? 600 : 360, easing: "ease-out" }
+    );
   }
 
   private loop = (timestamp: number) => {
@@ -798,8 +746,9 @@ class BattleGame {
     if (this.phase === "countdown") {
       const remainingMs = Math.max(0, this.countdownEndsAt - timestamp);
       const remainingSec = Math.ceil(remainingMs / 1000);
-      this.overlayElement.textContent = remainingSec > 0 ? remainingSec.toString() : "FIGHT!";
-      this.overlayElement.style.opacity = remainingMs < 400 ? (remainingMs / 400).toFixed(2) : "1";
+      setTextIfChanged(this.overlayElement, remainingSec > 0 ? remainingSec.toString() : "FIGHT!");
+      const opacity = remainingMs < 400 ? (remainingMs / 400).toFixed(2) : "1";
+      if (this.overlayElement.style.opacity !== opacity) this.overlayElement.style.opacity = opacity;
       this.setStatus(`Prepare to battle in ${Math.ceil(remainingMs / 1000)}...`);
       if (remainingMs <= 0) {
         this.overlayElement.textContent = "";
@@ -812,19 +761,32 @@ class BattleGame {
       this.updateArena(timestamp, roundElapsed, dt);
       this.updateFighters(timestamp, dt);
       this.detectCollisions(timestamp);
+      this.resolveStrikes(timestamp);
       const alive = this.fighters.filter((f) => f.alive);
-      if (alive.length <= 1 || roundElapsed >= MAX_GAME_DURATION_MS) {
-        const winner = alive[0] ?? this.breakTie();
-        this.finishBattle(timestamp, winner ?? null, roundElapsed);
+      setTextIfChanged(battleCount, `${alive.length} / ${this.fighters.length} remaining`);
+      if (alive.length === 2 && !this.finalDuelAt) {
+        this.finalDuelAt = timestamp;
+        finalDuel.hidden = false;
+      }
+      if (alive.length <= 1) {
+        this.finishBattle(alive[0] ?? null, roundElapsed);
       } else {
+        const exposed = alive.filter(f => f.outsideSince !== null && timestamp >= f.outsideSince).length;
+        const exposureStatus = exposed > 0 ? ` · ${exposed} in storm` : "";
         const shrinkRemaining = Math.max(0, this.arena.radius - this.arena.minRadius);
-        const secondsToFinal = Math.ceil(shrinkRemaining / ARENA_SHRINK_RATE);
-        this.setStatus(`Arena shrinking · ${alive.length} fighters left · ${secondsToFinal}s to final circle`);
+        if (shrinkRemaining > 0) {
+          const secondsToFinal = Math.ceil(shrinkRemaining / ARENA_SHRINK_RATE);
+          this.setStatus(`Arena shrinking · ${alive.length} fighters left${exposureStatus} · ${secondsToFinal}s to final circle`);
+        } else {
+          this.setStatus(`Final circle · ${alive.length} fighters left${exposureStatus}`);
+        }
       }
     }
 
     this.render();
-    this.requestId = requestAnimationFrame(this.loop);
+    // Let the final fall and blood effects settle after a winner is decided.
+    this.requestId = this.phase === "finished" && timestamp - this.finishedAt >= 2500
+      ? null : requestAnimationFrame(this.loop);
   };
 
   private updateArena(_now: number, _roundElapsed: number, dt: number) {
@@ -912,8 +874,12 @@ class BattleGame {
       const desiredVx = (combinedX / desiredMag) * desiredSpeed;
       const desiredVy = (combinedY / desiredMag) * desiredSpeed;
 
-      fighter.vx += (desiredVx - fighter.vx) * dt * 1.4;
-      fighter.vy += (desiredVy - fighter.vy) * dt * 1.4;
+      const engaged = now < fighter.combatUntil;
+      // A swing locks the target, not locomotion. Briefly preserve impact recoil.
+      if (now - fighter.lastDamageAt >= 90) {
+        fighter.vx += (desiredVx - fighter.vx) * dt * 1.4;
+        fighter.vy += (desiredVy - fighter.vy) * dt * 1.4;
+      }
 
       fighter.vx *= Math.pow(FRICTION, dt * 60);
       fighter.vy *= Math.pow(FRICTION, dt * 60);
@@ -928,29 +894,9 @@ class BattleGame {
       fighter.x += fighter.vx * dt;
       fighter.y += fighter.vy * dt;
 
-      fighter.trailCooldown = Math.max(0, fighter.trailCooldown - dt * 1000);
-      fighter.trailSegments = fighter.trailSegments.filter((segment) => now - segment.created <= TRAIL_LIFETIME_MS);
-
-      const currentSpeed = Math.hypot(fighter.vx, fighter.vy);
-      fighter.runeRotation += dt * (0.9 + Math.min(3, currentSpeed / (MAX_SPEED * 0.4)));
-      fighter.pulsePhase += dt;
-      fighter.hitSquash = Math.max(0, fighter.hitSquash - dt * 4.5);
-      if (currentSpeed > MAX_SPEED * 0.35 && fighter.trailCooldown <= 0) {
-        fighter.trailSegments.push({
-          x: fighter.x - fighter.vx * dt * 0.6,
-          y: fighter.y - fighter.vy * dt * 0.6,
-          created: now,
-          angle: Math.atan2(fighter.vy, fighter.vx),
-          alpha: 0.28
-        });
-        fighter.trailCooldown = TRAIL_SPAWN_INTERVAL;
+      if (!engaged && now - fighter.lastDamageAt > 450 && Math.abs(fighter.vx) > 12) {
+        fighter.mirrored = fighter.vx < 0;
       }
-
-      if (currentSpeed > 18) {
-        const targetOrientation = Math.atan2(fighter.vy, fighter.vx);
-        fighter.orientation = this.lerpAngle(fighter.orientation, targetOrientation, ORIENTATION_LERP);
-      }
-      fighter.weaponSwingPhase += dt * fighter.weaponSwingSpeed * (1 + currentSpeed / MAX_SPEED);
 
       const dx = fighter.x - this.centerX;
       const dy = fighter.y - this.centerY;
@@ -1022,54 +968,72 @@ class BattleGame {
   private detectCollisions(now: number) {
     const alive = this.fighters.filter((f) => f.alive);
     for (let i = 0; i < alive.length; i += 1) {
+      const a = alive[i];
       for (let j = i + 1; j < alive.length; j += 1) {
-        const a = alive[i];
         const b = alive[j];
+        const aBusy = now < a.combatUntil;
+        const bBusy = now < b.combatUntil;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dist = Math.hypot(dx, dy);
         const minDist = a.radius + b.radius;
-        if (dist < minDist && dist > 0) {
-          const overlap = minDist - dist;
-          const nx = dx / dist;
-          const ny = dy / dist;
-          a.x -= nx * (overlap / 2);
-          a.y -= ny * (overlap / 2);
-          b.x += nx * (overlap / 2);
-          b.y += ny * (overlap / 2);
+        if (dist > minDist + 6) continue;
+        const nx = dist > 0 ? dx / dist : 1;
+        const ny = dist > 0 ? dy / dist : 0;
+        const overlap = Math.max(0, minDist - dist);
+        const aShare = aBusy && !bBusy ? 0 : bBusy && !aBusy ? 1 : 0.5;
+        const bShare = 1 - aShare;
+        a.x -= nx * overlap * aShare;
+        a.y -= ny * overlap * aShare;
+        b.x += nx * overlap * bShare;
+        b.y += ny * overlap * bShare;
+        if (aBusy || bBusy) continue;
 
-          const relativeVx = b.vx - a.vx;
-          const relativeVy = b.vy - a.vy;
-          const relVelAlongNormal = relativeVx * nx + relativeVy * ny;
-          const bounceStrength = 1.4;
-          const impulse = Math.max(relVelAlongNormal, 90) * 0.6;
-          a.vx -= nx * impulse * bounceStrength;
-          a.vy -= ny * impulse * bounceStrength;
-          b.vx += nx * impulse * bounceStrength;
-          b.vy += ny * impulse * bounceStrength;
-          if (relVelAlongNormal > 0) {
-            const dampen = relVelAlongNormal * 0.45;
-            a.vx += dampen * nx;
-            a.vy += dampen * ny;
-            b.vx -= dampen * nx;
-            b.vy -= dampen * ny;
-          }
-
-          const shouldDamageA = now - a.lastDamageAt > HIT_COOLDOWN_MS;
-          const shouldDamageB = now - b.lastDamageAt > HIT_COOLDOWN_MS;
-          if (shouldDamageA || shouldDamageB) {
-            if (shouldDamageA && shouldDamageB) {
-              const attacker = Math.random() < 0.5 ? a : b;
-              const victim = attacker === a ? b : a;
-              this.applyHit(attacker, victim, now);
-            } else if (shouldDamageA) {
-              this.applyHit(b, a, now);
-            } else if (shouldDamageB) {
-              this.applyHit(a, b, now);
-            }
-          }
-        }
+        const canHitA = now - a.lastDamageAt > HIT_COOLDOWN_MS;
+        const canHitB = now - b.lastDamageAt > HIT_COOLDOWN_MS;
+        if (!canHitA && !canHitB) continue;
+        const attacker = canHitA && canHitB ? (Math.random() < 0.5 ? a : b) : canHitA ? b : a;
+        const victim = attacker === a ? b : a;
+        attacker.lastAttackAt = now;
+        attacker.strike = { targetId: victim.id, x: victim.x, y: victim.y, resolved: false };
+        attacker.mirrored = victim.x < attacker.x;
+        victim.mirrored = attacker.x < victim.x;
+        a.combatUntil = b.combatUntil = now + MELEE_DURATION_MS;
+        this.aimStrike(attacker, victim);
       }
+    }
+  }
+
+  private aimStrike(attacker: Fighter, victim: Fighter) {
+    const distance = Math.hypot(victim.x - attacker.x, victim.y - attacker.y) || 1;
+    // Meet the near edge of the opponent, rather than aiming through their center.
+    attacker.strike!.x = victim.x - (victim.x - attacker.x) / distance * victim.radius * 0.45;
+    attacker.strike!.y = victim.y - (victim.y - attacker.y) / distance * victim.radius * 0.45;
+  }
+
+  private resolveStrikes(now: number) {
+    for (const attacker of this.fighters) {
+      const strike = attacker.strike;
+      if (!strike || strike.resolved) continue;
+      const victim = this.fighters.find(f => f.id === strike.targetId);
+      if (!attacker.alive || !victim?.alive) {
+        strike.resolved = true;
+        attacker.lastAttackAt = -Infinity;
+        attacker.combatUntil = now;
+        if (victim) victim.combatUntil = now;
+        continue;
+      }
+      this.aimStrike(attacker, victim);
+      if (now - attacker.lastAttackAt < MELEE_IMPACT_MS) continue;
+      strike.resolved = true;
+      const dx = victim.x - attacker.x;
+      const dy = victim.y - attacker.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > (attacker.radius + victim.radius) * 1.2) continue;
+      this.applyHit(attacker, victim, now);
+      // Recoil starts at blade contact; there is no pre-strike collision bounce.
+      victim.vx = dx / (distance || 1) * 190;
+      victim.vy = dy / (distance || 1) * 190;
     }
   }
 
@@ -1077,16 +1041,10 @@ class BattleGame {
     victim.lastDamageAt = now;
     victim.hitsTaken += 1;
     attacker.hitsInflicted += 1;
-    const impactMagnitude = Math.min(
-      1.8,
-      Math.hypot(attacker.vx - victim.vx, attacker.vy - victim.vy) / Math.max(1, MAX_SPEED * 0.4)
-    );
-    this.triggerHitEffect((victim.x + attacker.x) / 2, (victim.y + attacker.y) / 2, impactMagnitude);
-    victim.hitOverlayUntil = now + 150;
-    victim.hitSquash = Math.max(victim.hitSquash, 0.25 + impactMagnitude * 0.15);
-    attacker.hitSquash = Math.max(attacker.hitSquash, 0.18);
+    attacker.mirrored = victim.x < attacker.x;
+    victim.mirrored = attacker.x < victim.x;
+    this.blood.add(victim.x, victim.y, victim.radius * 2.6, victim.mirrored, now / 1000);
     this.updateScoreboardHealth(victim);
-    this.updateScoreboardHealth(attacker);
     this.pulseScoreboard(attacker.id, "scoreboard-entry--pulse-hit");
     this.pulseScoreboard(victim.id, "scoreboard-entry--pulse-damage");
     if (victim.hitsTaken >= victim.health) {
@@ -1095,6 +1053,9 @@ class BattleGame {
   }
 
   private eliminate(fighter: Fighter, reason: string) {
+    if (!fighter.alive) return;
+    const aliveCount = this.fighters.filter((contender) => contender.alive).length;
+    if (aliveCount <= 1) return;
     fighter.alive = false;
     fighter.eliminationReason = reason;
     fighter.eliminatedAt = performance.now() - this.roundStartAt;
@@ -1111,24 +1072,14 @@ class BattleGame {
     this.pulseScoreboard(fighter.id, "scoreboard-entry--pulse-eliminated");
   }
 
-  private breakTie(): Fighter | null {
-    const alive = this.fighters.filter((f) => f.alive);
-    if (alive.length === 0) {
-      return null;
-    }
-    alive.sort((a, b) => {
-      const healthDiff = b.health - a.health;
-      if (healthDiff !== 0) return healthDiff;
-      const hitDiff = b.hitsInflicted - a.hitsInflicted;
-      if (hitDiff !== 0) return hitDiff;
-      return Math.random() - 0.5;
-    });
-    return alive[0];
-  }
-
-  private finishBattle(now: number, winner: Fighter | null, roundElapsed: number) {
+  private finishBattle(winner: Fighter | null, roundElapsed: number) {
     if (this.phase === "finished") return;
     this.phase = "finished";
+    this.finishedAt = performance.now();
+    finalDuel.hidden = true;
+    startButton.disabled = false;
+    startButton.textContent = "Start Battle";
+    for (const input of [textarea, spawnModeSelect, fightThemeSelect]) input.disabled = false;
     if (winner) {
       winner.eliminatedAt = roundElapsed;
       this.results.push({
@@ -1139,8 +1090,23 @@ class BattleGame {
         hitsInflicted: winner.hitsInflicted,
         eliminationReason: "Victory!"
       });
-      this.winnerElement.innerHTML = `Winner: <span>${winner.name}</span>`;
+      const winnerName = document.createElement("span");
+      winnerName.textContent = winner.name;
+      this.winnerElement.replaceChildren("Winner: ", winnerName);
       this.setStatus(`${winner.name} wins the battle!`);
+      battleCount.textContent = `1 / ${this.fighters.length} remaining`;
+      victoryName.textContent = winner.name;
+      victoryName.title = winner.name;
+      victoryStats.textContent = `${this.fighters.length} contenders · ${(roundElapsed / 1000).toFixed(1)}s · ${winner.hitsInflicted} hits dealt`;
+      const portrait = victoryPortrait.getContext("2d")!;
+      portrait.clearRect(0, 0, victoryPortrait.width, victoryPortrait.height);
+      drawIllustratedFighter(portrait, this.artwork, {
+        x: 160, y: 140, size: 220, team: winner.team, time: 0, victory: true
+      });
+      victoryCard.hidden = false;
+      if (!isVisualPreview && arenaPanel.contains(document.activeElement)) {
+        victoryName.focus({ preventScroll: true });
+      }
       this.setWinnerHighlight(winner.id);
       this.pulseScoreboard(winner.id, "scoreboard-entry--pulse-hit");
     } else {
@@ -1185,589 +1151,220 @@ class BattleGame {
     this.context.clearRect(0, 0, canvas.width, canvas.height);
     this.context.restore();
     this.context.save();
-    this.context.translate(this.centerX, this.centerY);
-    const gradient = this.context.createRadialGradient(0, 0, this.arena.radius * 0.18, 0, 0, this.arena.radius);
-    gradient.addColorStop(0, "rgba(255, 210, 140, 0.3)");
-    gradient.addColorStop(0.55, "rgba(140, 90, 220, 0.18)");
-    gradient.addColorStop(1, "rgba(10, 4, 24, 0)");
-    this.context.fillStyle = gradient;
-    this.context.beginPath();
-    this.context.arc(0, 0, this.arena.radius, 0, Math.PI * 2);
-    this.context.fill();
+    let zoom = 1;
+    if (this.finalDuelAt && !reducedMotion.matches) {
+      const progress = Math.min(1, (now - this.finalDuelAt) / 1200);
+      // Keep both contenders and their labels in view, including Storm Spawn.
+      let maxZoom = 1.3;
+      for (const fighter of this.fighters.filter(f => f.alive)) {
+        const extentX = Math.abs(fighter.x - this.centerX) + Math.max(fighter.radius * 1.8, fighter.nameplate.width / 4);
+        const extentY = Math.abs(fighter.y - this.centerY) + fighter.radius * 1.35 + 70;
+        maxZoom = Math.min(maxZoom, (this.centerX - 12) / extentX, (this.centerY - 12) / extentY);
+      }
+      zoom = 1 + (Math.max(1, maxZoom) - 1) * (1 - Math.pow(1 - progress, 3));
+      this.context.translate(this.centerX, this.centerY);
+      this.context.scale(zoom, zoom);
+      this.context.translate(-this.centerX, -this.centerY);
+    }
+    const view = { width: this.canvasWidth, height: this.canvasHeight, radius: this.arena.radius, time: now / 1000 };
+    this.arenaRenderer.drawGround(this.context, view);
 
-    this.context.strokeStyle = "rgba(255, 215, 140, 0.55)";
-    this.context.lineWidth = 3;
-    this.context.beginPath();
-    this.context.arc(0, 0, this.arena.radius, 0, Math.PI * 2);
-    this.context.stroke();
+    this.blood.drawGround(this.context, now / 1000);
+    const alive = this.fighters.filter(f => f.alive);
+    // Fallen figures are floor details; survivors always draw above them.
+    for (const fighter of this.fighters) {
+      if (!fighter.alive) this.drawFallenFighter(fighter, now);
+    }
+    for (const fighter of [...alive].sort((a, b) => a.y - b.y)) this.drawFighter(fighter, now);
+    // Active blades pass over opponents so contact is visible from every direction.
+    for (const fighter of alive) {
+      if (now - fighter.lastAttackAt < MELEE_DURATION_MS) this.drawFighter(fighter, now, true);
+    }
+    this.blood.drawAir(this.context, now / 1000);
+    this.arenaRenderer.drawWeather(this.context, view);
+    if (this.phase !== "finished") {
+      for (const fighter of alive) this.drawStormExposure(fighter, now);
+    }
     this.context.restore();
-
-    this.drawDangerBolts(now);
-
-    const alive = this.fighters.filter((f) => f.alive);
-    const fallen = this.fighters.filter((f) => !f.alive);
-    for (const fighter of alive) {
-      this.drawTrailSegments(fighter, now);
-    }
-    for (const fighter of fallen) {
-      this.drawFighter(fighter, now);
-    }
-    for (const fighter of alive) {
-      this.drawFighter(fighter, now);
-    }
-    this.drawLabels(alive, now);
-    this.drawHitEffects(now);
+    this.viewZoom = zoom;
+    if (this.phase !== "finished") this.drawLabels(alive);
   }
 
-  private drawDangerBolts(timeMs: number) {
+  private drawStormExposure(fighter: Fighter, now: number) {
+    const distance = Math.hypot(fighter.x - this.centerX, fighter.y - this.centerY);
+    if (this.computeArenaOutsideFraction(distance, fighter.radius) < 0.1) return;
+    const started = fighter.outsideSince;
+    // Storm Spawn's extra grace and the countdown are protected, not damage time.
+    const protectedEntry = this.phase === "countdown" || started === null || now < started;
+    const exposure = protectedEntry ? 0 : Math.min(1, Math.max(0, (now - started) / OUTSIDE_GRACE_MS));
+    const color = protectedEntry ? "#a9d8ff" : "#ff987e";
+    const x = fighter.x, y = fighter.y + fighter.radius * 1.1;
+    const ctx = this.context;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, 0.36);
+    ctx.strokeStyle = "rgba(12,10,25,0.8)";
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.arc(0, 0, fighter.radius * 0.95, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, fighter.radius * 0.95, 0, Math.PI * 2); ctx.stroke();
+    if (exposure > 0) {
+      ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.arc(0, 0, fighter.radius * 0.95, -Math.PI / 2, -Math.PI / 2 + exposure * Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+    const text = protectedEntry ? "STORM · GRACE" : `STORM · ${Math.max(0, (OUTSIDE_GRACE_MS - (now - started!)) / 1000).toFixed(1)}s`;
+    ctx.save();
+    ctx.font = "700 9px system-ui, sans-serif";
+    const width = ctx.measureText(text).width + 12;
+    const labelX = Math.max(2, Math.min(this.canvasWidth - width - 2, x - width / 2));
+    const labelY = Math.min(this.canvasHeight - 18, y + 15);
+    ctx.fillStyle = "rgba(21,14,30,0.94)";
+    ctx.beginPath(); ctx.roundRect(labelX, labelY, width, 15, 4); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = color; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(text, labelX + width / 2, labelY + 7.5);
+    ctx.restore();
+  }
+
+  private drawFallenFighter(fighter: Fighter, now: number) {
+    let sprite = this.fallenSprites.get(fighter.team);
+    if (!sprite) {
+      sprite = createFallenViking(this.artwork, fighter.team);
+      this.fallenSprites.set(fighter.team, sprite);
+    }
+    const deathAge = Math.max(0, now - this.roundStartAt - (fighter.eliminatedAt ?? 0));
+    const progress = Math.min(1, deathAge / 450);
+    const fall = 1 - Math.pow(1 - progress, 3);
+    const size = fighter.radius * 2.6;
+    const ctx = this.context;
+    ctx.save();
+    ctx.globalAlpha = 1 - progress * 0.6;
+    ctx.translate(fighter.x, fighter.y + size * 0.17 * fall);
+    ctx.scale(fighter.mirrored ? -1 : 1, 1 - fall * 0.25);
+    ctx.rotate(fall * Math.PI / 2);
+    // The cached sprite has extra space around the assembled axe and body.
+    const extent = size * 256 / 192;
+    ctx.drawImage(sprite, -extent / 2, -extent / 2, extent, extent);
+    ctx.restore();
+  }
+
+  private drawFighter(fighter: Fighter, now: number, weaponOnly = false) {
     const context = this.context;
-    const radius = this.arena.radius;
-    if (radius <= 0) return;
+    const size = fighter.radius * 2.6;
+    const hitAge = now - fighter.lastDamageAt;
+    const attackAge = now - fighter.lastAttackAt;
+    const hit = hitAge >= 0 && hitAge < 400 ? Math.pow(1 - hitAge / 400, 2) : 0;
+    const attack = attackAge >= 0 && attackAge < MELEE_DURATION_MS ? attackAge / MELEE_DURATION_MS : 0;
     context.save();
-    context.translate(this.centerX, this.centerY);
-    context.globalCompositeOperation = "lighter";
-    for (let i = 0; i < this.lightningSeeds.length; i += 1) {
-      const seed = this.lightningSeeds[i];
-      const baseAngle = seed + timeMs * 0.0008 + i * 0.35;
-      const flicker = 0.6 + 0.4 * Math.sin(timeMs * 0.0045 + seed * 9.7);
-      const segments = 4;
-      const jitterStrength = 0.3 + flicker * 0.2;
+    if (!weaponOnly) {
+      const threatened = this.phase === "running" && fighter.outsideSince !== null && now >= fighter.outsideSince && this.computeArenaOutsideFraction(Math.hypot(fighter.x - this.centerX, fighter.y - this.centerY), fighter.radius) >= 0.1;
+      context.strokeStyle = threatened ? "#ff665c" : fighter.theme.base;
+      context.lineWidth = fighter.id === this.followedId ? 4 : threatened ? 3 : 2;
+      if (fighter.id === this.followedId) context.strokeStyle = "#ffe599";
       context.beginPath();
-      for (let j = 0; j <= segments; j += 1) {
-        const progress = j / segments;
-        const radial = radius + 18 + progress * 36;
-        const jitter =
-          (Math.sin(seed * 11 + progress * 8 + timeMs * 0.006) - 0.5) * jitterStrength;
-        const angle = baseAngle + jitter;
-        const px = Math.cos(angle) * radial;
-        const py = Math.sin(angle) * radial;
-        if (j === 0) {
-          context.moveTo(px, py);
-        } else {
-          context.lineTo(px, py);
-        }
-      }
-      context.lineWidth = 2.2 + flicker * 2.2;
-      context.strokeStyle = `rgba(255, ${200 + Math.round(flicker * 40)}, ${
-        90 + Math.round(flicker * 70)
-      }, ${0.35 + flicker * 0.45})`;
-      context.shadowBlur = 18 + flicker * 18;
-      context.shadowColor = "rgba(255, 246, 210, 0.65)";
+      context.ellipse(fighter.x, fighter.y + size * 0.42, size * 0.3, size * 0.08, 0, 0, Math.PI * 2);
       context.stroke();
     }
-    context.restore();
-  }
-
-  private drawHitEffects(timeMs: number) {
-    const context = this.context;
-    const nextEffects: HitEffect[] = [];
-    for (const effect of this.hitEffects) {
-      const elapsed = timeMs - effect.bornAt;
-      if (elapsed < 0) continue;
-      const progress = elapsed / effect.duration;
-      if (progress >= 1) {
-        continue;
-      }
-      nextEffects.push(effect);
-      const alpha = 1 - progress;
-      const baseRadius = 26 + effect.intensity * 18;
-      const ringRadius = baseRadius + progress * 50;
-      context.save();
-      context.translate(effect.x, effect.y);
-      context.globalCompositeOperation = "lighter";
-
-      const gradient = context.createRadialGradient(0, 0, 0, 0, 0, ringRadius);
-      gradient.addColorStop(0, `rgba(255, 254, 202, ${0.9 * alpha})`);
-      gradient.addColorStop(0.45, `rgba(255, 184, 120, ${0.55 * alpha})`);
-      gradient.addColorStop(1, "rgba(255, 90, 60, 0)");
-      context.fillStyle = gradient;
-      context.beginPath();
-      context.arc(0, 0, ringRadius, 0, Math.PI * 2);
-      context.fill();
-
-      context.strokeStyle = `rgba(255, 212, 150, ${0.75 * alpha})`;
-      context.lineWidth = 3.2;
-      context.beginPath();
-      context.arc(0, 0, baseRadius + progress * 35, 0, Math.PI * 2);
-      context.stroke();
-
-      const shardCount = 6;
-      context.lineWidth = 2.4;
-      context.strokeStyle = `rgba(255, 255, 255, ${0.6 * alpha})`;
-      for (let i = 0; i < shardCount; i += 1) {
-        const angle = effect.seed + i * ((Math.PI * 2) / shardCount) + progress * 1.6;
-        const inner = baseRadius + progress * 10;
-        const outer = inner + 18 + progress * 18;
-        context.beginPath();
-        context.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-        context.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-        context.stroke();
-      }
-      context.strokeStyle = `rgba(255,255,255,${0.35 * alpha})`;
-      context.lineWidth = 2;
-      context.beginPath();
-      const arcOffset = effect.seed * 0.4;
-      context.arc(0, 0, baseRadius + progress * 28, -0.6 + arcOffset, 0.6 + arcOffset);
-      context.stroke();
-
-      context.restore();
-    }
-    this.hitEffects = nextEffects;
-  }
-
-  private drawTrailSegments(fighter: Fighter, timeMs: number) {
-    const context = this.context;
-    const size = fighter.radius * 2;
-    const nextSegments: TrailSegment[] = [];
-    for (const segment of fighter.trailSegments) {
-      const age = timeMs - segment.created;
-      if (age < 0) continue;
-      const progress = age / TRAIL_LIFETIME_MS;
-      if (progress >= 1) {
-        continue;
-      }
-      nextSegments.push(segment);
-      const alpha = segment.alpha * (1 - progress);
-      context.save();
-      context.globalAlpha = alpha;
-      context.translate(segment.x, segment.y);
-      context.rotate(segment.angle);
-      context.scale(1 + progress * 0.2, 1 - progress * 0.25);
-      context.drawImage(fighter.sprite, -size / 2, -size / 2, size, size);
-      context.restore();
-    }
-    fighter.trailSegments = nextSegments;
-  }
-
-  private drawShadow(fighter: Fighter) {
-    const context = this.context;
-    const speedRatio = Math.min(1, Math.hypot(fighter.vx, fighter.vy) / MAX_SPEED);
-    const width = fighter.radius * (1.2 + speedRatio * 0.25);
-    const height = fighter.radius * 0.55;
-    const opacity = fighter.alive ? 0.36 : 0.22;
-    context.save();
-    context.translate(fighter.x, fighter.y + fighter.radius * 0.9);
-    context.scale(1, 0.65 - speedRatio * 0.1);
-    context.fillStyle = `rgba(6, 0, 18, ${opacity.toFixed(2)})`;
-    context.beginPath();
-    context.ellipse(0, 0, width, height, 0, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-  }
-
-  private drawFighter(fighter: Fighter, timeMs: number) {
-    this.drawShadow(fighter);
-    const context = this.context;
-    const speed = Math.hypot(fighter.vx, fighter.vy);
-    const speedRatio = Math.min(1, speed / MAX_SPEED);
-    const idlePulse = 1 + Math.sin(fighter.pulsePhase * 2.8) * 0.02;
-    const scaleX = idlePulse * (1 + speedRatio * 0.12 + fighter.hitSquash * 0.35);
-    const scaleY = idlePulse * (1 - speedRatio * 0.1 - fighter.hitSquash * 0.28);
-    const wobble = Math.sin(fighter.pulsePhase * 3 + fighter.id) * 0.03;
-
-    context.save();
-    context.translate(fighter.x, fighter.y);
-    context.rotate(fighter.orientation + wobble);
-
-    context.save();
-    context.scale(scaleX, scaleY);
-    const size = fighter.radius * 2;
-    context.globalAlpha = fighter.alive ? 1 : 0.32;
-    context.drawImage(fighter.sprite, -size / 2, -size / 2, size, size);
-
-    const outsideSince = fighter.outsideSince;
-    if (fighter.alive && outsideSince !== null && timeMs >= outsideSince) {
-      const outsideElapsed = timeMs - outsideSince;
-      const progress = Math.min(1, Math.max(0, outsideElapsed / OUTSIDE_GRACE_MS));
-      const pulse = (Math.sin(timeMs * 0.016 + fighter.id * 1.1) + 1) / 2;
-      const alpha = Math.min(0.72, 0.12 + progress * 0.4 + pulse * 0.35);
-      context.save();
-      context.fillStyle = `rgba(255, 120, 90, ${alpha.toFixed(3)})`;
-      context.beginPath();
-      context.arc(0, 0, fighter.radius * 0.98, 0, Math.PI * 2);
-      context.fill();
-      context.restore();
-    }
-
-    if (fighter.alive && timeMs < fighter.hitOverlayUntil) {
-      const remaining = fighter.hitOverlayUntil - timeMs;
-      const flashAlpha = Math.min(0.45, 0.15 + (remaining / 150) * 0.45);
-      context.fillStyle = `rgba(255,255,255,${flashAlpha.toFixed(3)})`;
-      context.beginPath();
-      context.arc(0, 0, fighter.radius * 0.95, 0, Math.PI * 2);
-      context.fill();
-    }
-
-    const strokeWidth = 3 / Math.max(scaleX, scaleY, 0.001);
-    context.lineWidth = strokeWidth;
-    context.strokeStyle = tinycolor(fighter.theme.edge).setAlpha(fighter.alive ? 0.9 : 0.4).toRgbString();
-    context.beginPath();
-    context.arc(0, 0, fighter.radius * 0.98, 0, Math.PI * 2);
-    context.stroke();
-
-    context.lineWidth = 1.6 / Math.max(scaleX, scaleY, 0.001);
-    context.strokeStyle = "rgba(255,255,255,0.22)";
-    context.beginPath();
-    context.arc(0, 0, fighter.radius * 0.78, 0, Math.PI * 2);
-    context.stroke();
-    context.restore();
-
-    const ringTilt = 0.7 + speedRatio * 0.18;
-    context.save();
-    context.scale(1, ringTilt);
-    context.rotate(fighter.runeRotation);
-    const ringRadius = fighter.radius * 0.95;
-    context.strokeStyle = `rgba(255, 228, 170, ${fighter.alive ? 0.68 : 0.3})`;
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(0, 0, ringRadius, 0, Math.PI * 2);
-    context.stroke();
-    context.globalAlpha = fighter.alive ? 0.18 : 0.08;
-    context.fillStyle = fighter.theme.rune;
-    context.font = `${fighter.radius * 1.3}px "Cinzel Decorative", serif`;
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(fighter.runeChar, 0, 0);
-    context.restore();
-
-    context.save();
-    context.fillStyle = "rgba(14, 4, 24, 0.65)";
-    context.beginPath();
-    context.arc(0, 0, fighter.radius * 0.55, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = "rgba(255, 230, 190, 0.82)";
-    context.lineWidth = 1.4;
-    context.stroke();
-    context.fillStyle = "rgba(255, 248, 230, 0.92)";
-    context.font = `${fighter.radius * 0.85}px "Cinzel Decorative", serif`;
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(String(fighter.displayIndex), 0, 0);
-    context.restore();
-
-    if (fighter.alive) {
-      this.drawAxe(context, fighter);
-      this.drawHat(context, fighter, speedRatio, timeMs);
-    }
-
-    context.restore();
-
-    if (fighter.alive) {
-      this.drawCrystalHearts(fighter, timeMs);
-    }
-  }
-
-  private drawLabels(fighters: Fighter[], _timeMs: number) {
-    if (fighters.length === 0) return;
-    const context = this.context;
-    const paddingX = 16;
-    const paddingY = 6;
-    const minSpacing = 6;
-    const labels = fighters.map((fighter) => {
-      const fontSize = Math.max(14, Math.min(18, fighter.radius * 0.9));
-      context.font = `${fontSize}px "Cinzel Decorative", serif`;
-      const text = fighter.name;
-      const textWidth = context.measureText(text).width;
-      const crestWidth = fontSize * 0.7;
-      const width = textWidth + crestWidth + paddingX * 2 + 10;
-      const height = fontSize + paddingY * 2;
-      const baseTop = fighter.y - fighter.radius * 1.9 - height;
-      return {
-        fighter,
-        text,
-        fontSize,
-        width,
-        height,
-        crestWidth,
-        top: baseTop,
-        alpha: 1
-      };
+    drawIllustratedFighter(context, this.artwork, {
+      x: fighter.x, y: fighter.y, size, team: fighter.team,
+      time: fighter.alive ? now / 1000 + fighter.id : 0,
+      victory: this.phase === "finished" && fighter.alive,
+      walking: fighter.alive && this.phase === "running" && Math.hypot(fighter.vx, fighter.vy) > 18,
+      mirrored: fighter.mirrored, attack: fighter.alive ? attack : 0, hit,
+      attackTarget: fighter.strike,
+      layer: weaponOnly ? "weapon" : fighter.alive && attack > 0 ? "body" : undefined
     });
+    context.restore();
+  }
 
-    labels.sort((a, b) => a.top - b.top);
-    for (let i = 1; i < labels.length; i += 1) {
-      const prev = labels[i - 1];
-      const current = labels[i];
-      const minTop = prev.top + prev.height + minSpacing;
-      if (current.top < minTop) {
-        current.top = minTop;
+  private follow(id: number | null) {
+    this.followedId = id;
+    for (const [fighterId, entry] of this.scoreboardEntries) {
+      entry.name.setAttribute("aria-pressed", String(fighterId === id));
+      entry.root.classList.toggle("scoreboard-entry--followed", fighterId === id);
+    }
+    this.updateFollowStatus();
+  }
+
+  private updateFollowStatus() {
+    const fighter = this.fighters.find(f => f.id === this.followedId);
+    clearFollow.hidden = !fighter;
+    setTextIfChanged(followStatus, fighter
+      ? `Following ${fighter.displayIndex} · ${fighter.name} · ${fighter.alive ? `${fighter.health - fighter.hitsTaken}/${fighter.health} hearts` : "Fallen"}`
+      : "Numbers match the roster. Tap a Viking or a name to follow.");
+  }
+
+  private drawLabels(fighters: Fighter[]) {
+    const ctx = this.context;
+    const anchors = fighters.map(f => ({
+      id: f.id,
+      x: this.centerX + (f.x - this.centerX) * this.viewZoom,
+      y: this.centerY + (f.y - f.radius * 1.35 - this.centerY) * this.viewZoom,
+      width: f.nameplate.width / 2,
+      compactWidth: f.compactNameplate.width / 2,
+      badgeWidth: f.badgeNameplate.width / 2
+    }));
+    this.labelPlacements = layoutNameplates(anchors, {
+      width: this.canvasWidth, height: this.canvasHeight, top: finalDuel.hidden ? 4 : 80
+    }, this.labelPlacements, this.followedId);
+    if (this.followedId === null) {
+      setTextIfChanged(followStatus, this.labelPlacements.length < fighters.length
+        ? `Crowded arena: ${this.labelPlacements.length} labels shown. Find all ${fighters.length} survivors in the roster.`
+        : "Numbers match the roster. Tap a Viking or a name to follow.");
+    }
+    const byId = new Map(fighters.map(f => [f.id, f]));
+    // Draw every tether first so a later fighter's line never crosses over a name.
+    for (const label of this.labelPlacements) {
+      const fighter = byId.get(label.id)!;
+      const x = Math.max(label.x + 4, Math.min(label.x + label.width - 4, label.anchorX));
+      const y = label.anchorY >= label.y + LABEL_HEIGHT ? label.y + LABEL_HEIGHT : label.y;
+      ctx.strokeStyle = fighter.id === this.followedId ? "#ffe599" : fighter.theme.base;
+      ctx.globalAlpha = fighter.id === this.followedId ? 0.95 : 0.55;
+      ctx.lineWidth = fighter.id === this.followedId ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(label.anchorX, label.anchorY); ctx.lineTo(x, y); ctx.stroke();
+      ctx.beginPath(); ctx.arc(label.anchorX, label.anchorY, 2, 0, Math.PI * 2); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    for (const label of this.labelPlacements) {
+      const fighter = byId.get(label.id)!;
+      const plate = label.kind === "full" ? fighter.nameplate : label.kind === "compact" ? fighter.compactNameplate : fighter.badgeNameplate;
+      const { x, y, width } = label;
+      ctx.drawImage(plate, x, y, width, 20);
+      if (fighter.id === this.followedId) {
+        ctx.strokeStyle = "#ffe599"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(x - 1, y - 1, width + 2, 22, 5); ctx.stroke();
+      }
+      // A dark backing keeps health readable over both stone and storm.
+      ctx.fillStyle = "rgba(12,17,31,.92)";
+      ctx.fillRect(x + width / 2 - 16, y + 20, 32, 9);
+      for (let i = 0; i < fighter.health; i++) {
+        ctx.fillStyle = i < fighter.health - fighter.hitsTaken ? "#f55070" : "#493442";
+        ctx.fillRect(x + width / 2 - 14 + i * 10, y + 22, 8, 5);
       }
     }
-
-    for (const label of labels) {
-      const clampTop = label.fighter.y - label.fighter.radius * 0.75 - label.height;
-      if (label.top > clampTop) {
-        label.top = clampTop;
-        label.alpha = 0.45;
-      } else {
-        label.alpha = 1;
-      }
-    }
-
-    for (const label of labels) {
-      const fighter = label.fighter;
-      const baseX = fighter.x;
-      const bottom = label.top + label.height;
-      const anchorY = fighter.y - fighter.radius * 0.55;
-      context.save();
-      context.strokeStyle = tinycolor(fighter.theme.base).setAlpha(0.45).toRgbString();
-      context.lineWidth = 1.4;
-      context.beginPath();
-      context.moveTo(baseX, anchorY);
-      const controlY = (anchorY + bottom) / 2;
-      context.quadraticCurveTo(baseX, controlY, baseX, bottom);
-      context.stroke();
-      context.restore();
-
-      context.save();
-      context.translate(baseX, label.top + label.height / 2);
-      context.globalAlpha = label.alpha;
-      const labelGradient = context.createLinearGradient(0, -label.height / 2, 0, label.height / 2);
-      labelGradient.addColorStop(0, "rgba(252, 233, 176, 0.78)");
-      labelGradient.addColorStop(1, "rgba(245, 216, 142, 0.88)");
-      context.fillStyle = labelGradient;
-      const width = label.width;
-      const height = label.height;
-      const radius = Math.min(14, height / 2);
-      context.beginPath();
-      context.moveTo(-width / 2 + radius, -height / 2);
-      context.lineTo(width / 2 - radius, -height / 2);
-      context.quadraticCurveTo(width / 2, -height / 2, width / 2, -height / 2 + radius);
-      context.lineTo(width / 2, height / 2 - radius);
-      context.quadraticCurveTo(width / 2, height / 2, width / 2 - radius, height / 2);
-      context.lineTo(-width / 2 + radius, height / 2);
-      context.quadraticCurveTo(-width / 2, height / 2, -width / 2, height / 2 - radius);
-      context.lineTo(-width / 2, -height / 2 + radius);
-      context.quadraticCurveTo(-width / 2, -height / 2, -width / 2 + radius, -height / 2);
-      context.closePath();
-      context.shadowColor = "rgba(255, 220, 140, 0.45)";
-      context.shadowBlur = 14;
-      context.fill();
-      context.shadowBlur = 0;
-      context.strokeStyle = "rgba(120, 70, 10, 0.55)";
-      context.lineWidth = 2;
-      context.stroke();
-
-      const crestRadius = label.fontSize * 0.35;
-      const crestX = -width / 2 + crestRadius + 8;
-      context.fillStyle = tinycolor(label.fighter.theme.crest).lighten(10).toHexString();
-      context.beginPath();
-      context.arc(crestX, 0, crestRadius, 0, Math.PI * 2);
-      context.fill();
-      context.strokeStyle = "rgba(80, 40, 12, 0.45)";
-      context.lineWidth = 0.8;
-      context.stroke();
-
-      context.font = `${label.fontSize}px "Cinzel Decorative", serif`;
-      context.textAlign = "left";
-      context.textBaseline = "middle";
-      const textColor = tinycolor(label.fighter.theme.base).lighten(32).toHexString();
-      const textX = crestX + crestRadius + 8;
-      context.strokeStyle = "rgba(0, 0, 0, 0.55)";
-      context.lineJoin = "round";
-      context.lineWidth = 2.4;
-      context.strokeText(label.text, textX, 0);
-      context.fillStyle = textColor;
-      context.fillText(label.text, textX, 0);
-      context.restore();
-    }
-  }
-
-  private triggerHitEffect(x: number, y: number, intensity = 1) {
-    this.hitEffects.push({
-      x,
-      y,
-      bornAt: performance.now(),
-      duration: 260,
-      intensity,
-      seed: Math.random() * Math.PI * 2
-    });
-  }
-
-  private drawCrystalHearts(fighter: Fighter, timeMs: number) {
-    const total = fighter.health;
-    const lost = fighter.hitsTaken;
-    const spacing = Math.max(18, fighter.radius * 0.95);
-    const baseY = fighter.y - fighter.radius * (1.7 + Math.sin(timeMs * 0.003 + fighter.id) * 0.03);
-    const startX = fighter.x - ((total - 1) * spacing) / 2;
-    for (let i = 0; i < total; i += 1) {
-      const filled = i >= lost;
-      this.drawCrystalHeart(startX + i * spacing, baseY, fighter.radius * 0.42, filled);
-      if (i < lost) {
-        this.drawBrokenHeartOverlay(startX + i * spacing, baseY, fighter.radius * 0.42);
-      }
-    }
-  }
-
-  private drawCrystalHeart(x: number, y: number, size: number, filled: boolean) {
-    const context = this.context;
-    context.save();
-    context.translate(x, y);
-    context.scale(size, size);
-    const gradient = context.createLinearGradient(0, -1, 0, 1);
-    gradient.addColorStop(0, "rgba(255, 255, 255, 0.9)");
-    gradient.addColorStop(0.4, "rgba(255, 174, 230, 0.95)");
-    gradient.addColorStop(1, "rgba(255, 90, 160, 0.92)");
-    context.fillStyle = filled ? gradient : "rgba(90, 30, 70, 0.3)";
-    context.beginPath();
-    context.moveTo(0, 0.95);
-    context.lineTo(-0.85, -0.05);
-    context.bezierCurveTo(-1.1, -0.7, -0.35, -1.15, 0, -0.45);
-    context.bezierCurveTo(0.35, -1.15, 1.1, -0.7, 0.85, -0.05);
-    context.closePath();
-    context.fill();
-    context.lineWidth = 0.12;
-    context.strokeStyle = "rgba(255, 255, 255, 0.4)";
-    context.stroke();
-    context.restore();
-  }
-
-  private drawBrokenHeartOverlay(x: number, y: number, size: number) {
-    const context = this.context;
-    context.save();
-    context.translate(x, y);
-    context.scale(size, size);
-    context.strokeStyle = "rgba(255, 255, 255, 0.8)";
-    context.lineWidth = 0.18;
-    context.beginPath();
-    context.moveTo(-0.4, -0.2);
-    context.lineTo(0, 0.2);
-    context.lineTo(0.4, -0.2);
-    context.stroke();
-    context.restore();
-  }
-
-  private drawAxe(context: CanvasRenderingContext2D, fighter: Fighter) {
-    const swing = Math.sin(fighter.weaponSwingPhase) * 0.45;
-    const handleLength = fighter.radius * 1.7;
-    const handleWidth = Math.max(4, fighter.radius * 0.24);
-    const bladeWidth = handleLength * 0.7;
-    const bladeHeight = handleLength * 0.75;
-    const offset = fighter.radius * 0.65;
-
-    context.save();
-    context.rotate(swing + Math.PI / 2);
-    context.translate(0, offset);
-
-    const handleGradient = context.createLinearGradient(0, -handleLength * 0.5, 0, handleLength * 0.6);
-    handleGradient.addColorStop(0, "rgba(210, 170, 90, 0.9)");
-    handleGradient.addColorStop(1, "rgba(120, 80, 30, 0.95)");
-    context.fillStyle = handleGradient;
-    context.strokeStyle = "rgba(40, 12, 4, 0.5)";
-    const contextWithRoundRect = context as CanvasRenderingContext2D & {
-      roundRect?: CanvasRenderingContext2D["roundRect"];
-    };
-    if (typeof contextWithRoundRect.roundRect === "function") {
-      contextWithRoundRect.roundRect(-handleWidth / 2, -handleLength * 0.3, handleWidth, handleLength, handleWidth / 2);
-    } else {
-      context.beginPath();
-      context.rect(-handleWidth / 2, -handleLength * 0.3, handleWidth, handleLength);
-      context.closePath();
-    }
-    context.fill();
-    context.stroke();
-
-    const bladeGradient = context.createLinearGradient(handleWidth / 2, -bladeHeight / 2, handleWidth / 2 + bladeWidth, bladeHeight / 2);
-    bladeGradient.addColorStop(0, "#f3f4f8");
-    bladeGradient.addColorStop(0.45, "#c7cfda");
-    bladeGradient.addColorStop(1, "#6d7a8e");
-    context.fillStyle = bladeGradient;
-    context.beginPath();
-    context.moveTo(handleWidth / 2, -bladeHeight / 2);
-    context.lineTo(handleWidth / 2 + bladeWidth * 0.95, -bladeHeight * 0.4);
-    context.quadraticCurveTo(handleWidth / 2 + bladeWidth * 1.05, 0, handleWidth / 2 + bladeWidth * 0.95, bladeHeight * 0.4);
-    context.lineTo(handleWidth / 2, bladeHeight / 2);
-    context.closePath();
-    context.fill();
-    context.strokeStyle = "rgba(40, 45, 70, 0.55)";
-    context.lineWidth = Math.max(1.4, fighter.radius * 0.08);
-    context.stroke();
-
-    context.fillStyle = "rgba(238, 184, 78, 0.95)";
-    context.beginPath();
-    context.arc(0, -handleLength * 0.32, handleWidth * 0.55, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = "rgba(120, 70, 20, 0.7)";
-    context.lineWidth = 0.8;
-    context.stroke();
-
-    context.restore();
-  }
-
-  private drawHat(context: CanvasRenderingContext2D, fighter: Fighter, speedRatio: number, timeMs: number) {
-    const tilt = Math.sin(timeMs * 0.004 + fighter.id) * 0.18 + fighter.hitSquash * 0.4;
-    const wobble = Math.sin(fighter.weaponSwingPhase * 0.8) * 0.05;
-    context.save();
-    context.translate(0, -fighter.radius * 0.95);
-    context.rotate(tilt + wobble);
-
-    const domeRadius = fighter.radius * 0.75;
-    const domeGradient = context.createLinearGradient(-domeRadius, -domeRadius, domeRadius, domeRadius);
-    domeGradient.addColorStop(0, "#d7d9e3");
-    domeGradient.addColorStop(0.5, "#9aa1b3");
-    domeGradient.addColorStop(1, "#555b6d");
-    context.fillStyle = domeGradient;
-    context.beginPath();
-    context.ellipse(0, 0, domeRadius, domeRadius * 0.6, 0, Math.PI, 0, true);
-    context.fill();
-    context.strokeStyle = "rgba(20, 24, 40, 0.6)";
-    context.lineWidth = 2;
-    context.stroke();
-
-    const bandGradient = context.createLinearGradient(-domeRadius, 0, domeRadius, 0);
-    bandGradient.addColorStop(0, "rgba(255, 215, 120, 0.95)");
-    bandGradient.addColorStop(1, "rgba(200, 150, 60, 0.95)");
-    context.fillStyle = bandGradient;
-    context.beginPath();
-    context.ellipse(0, domeRadius * 0.05, domeRadius * 0.92, domeRadius * 0.25, 0, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = "rgba(90, 40, 10, 0.6)";
-    context.lineWidth = 1.2;
-    context.stroke();
-
-    const hornBase = domeRadius * 0.6;
-    const hornLength = domeRadius * 0.9;
-    const hornTilt = 0.5 + speedRatio * 0.2;
-    const drawHorn = (side: number) => {
-      context.save();
-      context.translate(side * hornBase, -domeRadius * 0.1);
-      context.rotate(side * hornTilt);
-      const hornGradient = context.createLinearGradient(0, 0, 0, -hornLength);
-      hornGradient.addColorStop(0, "#7a5030");
-      hornGradient.addColorStop(0.3, "#d4b38a");
-      hornGradient.addColorStop(1, "#f7e8d3");
-      context.fillStyle = hornGradient;
-      context.beginPath();
-      context.moveTo(0, 0);
-      context.quadraticCurveTo(side * hornLength * 0.3, -hornLength * 0.35, side * hornLength * 0.1, -hornLength);
-      context.quadraticCurveTo(side * hornLength * -0.2, -hornLength * 0.45, 0, 0);
-      context.fill();
-      context.strokeStyle = "rgba(50, 30, 20, 0.35)";
-      context.lineWidth = 1.2;
-      context.stroke();
-      context.restore();
-    };
-
-    drawHorn(-1);
-    drawHorn(1);
-    context.restore();
   }
 
   private resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (rect.width <= 0 || rect.height <= 0) return;
+    if (rect.width === this.canvasWidth && rect.height === this.canvasHeight &&
+        canvas.width === Math.floor(rect.width * dpr) && canvas.height === Math.floor(rect.height * dpr)) return;
     const hadSize = this.canvasWidth > 0 && this.canvasHeight > 0;
     const prevMinDimension = hadSize ? Math.min(this.canvasWidth, this.canvasHeight) : Math.min(rect.width, rect.height);
     const prevCenterX = this.centerX;
     const prevCenterY = this.centerY;
-    const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
-    if (typeof ctx.resetTransform === "function") {
-      ctx.resetTransform();
+    if (typeof this.context.resetTransform === "function") {
+      this.context.resetTransform();
     } else {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.context.setTransform(1, 0, 0, 1, 0, 0);
     }
-    ctx.scale(dpr, dpr);
+    this.context.scale(dpr, dpr);
+    this.labelPlacements = [];
     this.canvasWidth = rect.width;
     this.canvasHeight = rect.height;
     this.centerX = rect.width / 2;
@@ -1787,19 +1384,20 @@ class BattleGame {
         fighter.vx *= scale;
         fighter.vy *= scale;
         fighter.radius = Math.max(16, Math.min(36, fighter.radius * scale));
+        if (fighter.strike) {
+          fighter.strike.x = this.centerX + (fighter.strike.x - prevCenterX) * scale;
+          fighter.strike.y = this.centerY + (fighter.strike.y - prevCenterY) * scale;
+        }
       }
     }
     this.arena.minRadius = minDimension / 8;
     this.arena.radius = Math.max(this.arena.radius, this.arena.minRadius);
-  }
-
-  private lerpAngle(current: number, target: number, t: number) {
-    const diff = Math.atan2(Math.sin(target - current), Math.cos(target - current));
-    return current + diff * t;
+    this.blood.clear();
+    if (this.phase === "idle" || this.phase === "finished") this.render();
   }
 
   private setStatus(text: string) {
-    this.statusElement.textContent = text;
+    setTextIfChanged(this.statusElement, text);
   }
 
   private cancelLoop() {
@@ -1810,27 +1408,58 @@ class BattleGame {
   }
 }
 
-const game = new BattleGame(ctx, statusBar, overlayText, resultsPanel, winnerBanner, resultsList, resultsPlaceholder, {
-  alive: scoreboardAliveElement,
-  fallen: scoreboardFallenElement,
-  fallenSection: scoreboardFallenSectionElement
-});
+const isVisualPreview = new URLSearchParams(window.location.search).has("visual-preview");
+if (isVisualPreview) document.documentElement.classList.add("visual-preview");
+let game: BattleGame | null = null;
+let loadingArtwork = false;
 
-startButton.addEventListener("click", () => {
-  const names = textarea.value
-    .split(/\r?\n/)
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0);
+async function initializeBattle() {
+  if (game || loadingArtwork) return;
+  loadingArtwork = true;
+  startButton.disabled = true;
+  startButton.textContent = "Loading Vikings…";
+  statusBar.textContent = "Loading Viking artwork…";
+  try {
+    const artwork = await loadIllustratedCharacters();
+    game = new BattleGame(ctx!, statusBar, overlayText, resultsPanel, winnerBanner, resultsList, resultsPlaceholder, {
+      alive: scoreboardAliveElement,
+      fallen: scoreboardFallenElement,
+      fallenSection: scoreboardFallenSectionElement
+    }, artwork);
+    startButton.textContent = "Start Battle";
+    if (isVisualPreview) {
+      const previewNames = ["Astrid", "Bjorn", "Freya", "Ragnar", "Sigrid", "Leif"];
+      game.start(previewNames, "storm");
+      window.setInterval(() => game?.start(previewNames, "storm"), 11_000);
+    }
+  } catch {
+    statusBar.textContent = "Viking artwork could not load. Check your connection and retry.";
+    startButton.textContent = "Retry artwork";
+  } finally {
+    loadingArtwork = false;
+    startButton.disabled = false;
+  }
+}
 
+startButton.addEventListener("click", async () => {
+  if (!game) {
+    await initializeBattle();
+    if (!game) return;
+  }
+  const names = textarea.value.split(/\r?\n/).map(name => name.trim()).filter(Boolean);
   const uniqueNames = Array.from(new Set(names));
   if (uniqueNames.length < 2) {
-    statusBar.textContent = "Add at least two contenders to start the battle.";
+    setupError.textContent = "Enter at least two different names to start a battle.";
+    setupError.hidden = false;
+    textarea.setAttribute("aria-invalid", "true");
+    textarea.focus();
     return;
   }
-  startButton.disabled = true;
-  setTimeout(() => {
-    startButton.disabled = false;
-  }, 500);
-  const spawnMode = spawnModeSelect.value as SpawnMode;
-  game.start(uniqueNames, spawnMode);
+  setupError.hidden = true;
+  textarea.removeAttribute("aria-invalid");
+  game.start(uniqueNames, spawnModeSelect.value as SpawnMode);
 });
+
+document.getElementById("rematchBtn")!.addEventListener("click", () => game?.rematch());
+
+void initializeBattle();

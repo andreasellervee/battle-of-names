@@ -1,0 +1,117 @@
+{
+  "sourceHash": "51458902f3ea2854da4292bbc0d4b2d68fa343106c2ee0da095afe9162ed78f6",
+  "files": {
+    "256/body-teal.webp": {
+      "bytes": 16788,
+      "sha256": "1d690f85db35c464464675f5c678e73c90941e8f9e43e3c52740488206238fc3"
+    },
+    "256/body-ruby.webp": {
+      "bytes": 16704,
+      "sha256": "0d822e04a6a89713d3d51642d04e2fd154280690816afa9f7b318989b2098fe0"
+    },
+    "256/body-gold.webp": {
+      "bytes": 17396,
+      "sha256": "c401e1399766583b9035e5fd7e5ac9ef793dcbef3d8b4db0c2d67a5ed12062dd"
+    },
+    "256/body-blue.webp": {
+      "bytes": 16728,
+      "sha256": "f59ea1415e3c7392b7e9fa74d8815cee65cd77fdeba49d8a0a3b7c9681f683bf"
+    },
+    "256/body-violet.webp": {
+      "bytes": 16620,
+      "sha256": "61f6ebb49063db8b4bcb0dbdc1638b373a6b815385c688bb6c8fd4fa8f5ccba1"
+    },
+    "256/body-green.webp": {
+      "bytes": 16684,
+      "sha256": "93c8598a075f783c8a97ed61d9b82c0461effaf460fb18a860175f136e19509e"
+    },
+    "256/body-orange.webp": {
+      "bytes": 16840,
+      "sha256": "634f129d8faa7a27140d070245c9e9e49407a8cdc20dfbeab14bd557cf8c81c3"
+    },
+    "256/body-pink.webp": {
+      "bytes": 16700,
+      "sha256": "c0c261077d8e88fe5e312dc2dc7d05054edaabb256ed66b5fdfbe98c675206b7"
+    },
+    "256/body-ice.webp": {
+      "bytes": 16922,
+      "sha256": "6912110ee93d01a50da2e303bfb62bd6a35b93c3b01ba67b28c302d36e67a1b4"
+    },
+    "256/body-lime.webp": {
+      "bytes": 16818,
+      "sha256": "6aba4fee0177e5b38afa383708b06751c8f2c5cc27ed0c815107240c9f4cd732"
+    },
+    "256/body-ivory.webp": {
+      "bytes": 16744,
+      "sha256": "8609e3e22222b99a44239a1457df7f5058fe1a277ca48a399cb4bcbe8ba301bb"
+    },
+    "256/body-slate.webp": {
+      "bytes": 16446,
+      "sha256": "b022e92426866fc6cda1de7cd1411fc554c07f6b3f5ea92aa9bb36f12b25e41e"
+    },
+    "256/axe.webp": {
+      "bytes": 6522,
+      "sha256": "d382dcd1d77bfb87597d506705f0781a1c1e52be77b56d51ae4aca7a32953cdf"
+    },
+    "256/shield.webp": {
+      "bytes": 14694,
+      "sha256": "bfc06246bff0f3c1319d9e2d51a140c60e99bb55edd5c979b76eef4c63082fcc"
+    },
+    "512/body-teal.webp": {
+      "bytes": 42136,
+      "sha256": "3857722e93415daf69a4fb9b938eb92b9301d760a615d48c69465627fc0ee81c"
+    },
+    "512/body-ruby.webp": {
+      "bytes": 42534,
+      "sha256": "fe0619e8f639f20e085125f9fcadf213a48d384c1a7a06e63b64fd84ab92fd11"
+    },
+    "512/body-gold.webp": {
+      "bytes": 44254,
+      "sha256": "849a5d3e3d25699d7c0d9363cef01b6e380493f08128aa9b5c2fcfef8ff94363"
+    },
+    "512/body-blue.webp": {
+      "bytes": 42188,
+      "sha256": "6bec462442dabb89ea139b8ff09c7742a1e737c479fd78e72c25b2c7ff972c46"
+    },
+    "512/body-violet.webp": {
+      "bytes": 42106,
+      "sha256": "c01e5b74367c75259a01220f58d76265582dc648a2e5cfc126af77f3c19460ad"
+    },
+    "512/body-green.webp": {
+      "bytes": 42196,
+      "sha256": "f48c247546537dccd818471b7c949324b0c5f4c1e83106f4e471955c75de2301"
+    },
+    "512/body-orange.webp": {
+      "bytes": 42902,
+      "sha256": "7b88a5c95901021a099c06131b526729256ed819a06c1bae9c6f085b79cbee1b"
+    },
+    "512/body-pink.webp": {
+      "bytes": 42088,
+      "sha256": "d034e0dd721ee113ecb208f0e763b144bd04b02ea115baf37adfd9a33e49e62f"
+    },
+    "512/body-ice.webp": {
+      "bytes": 42640,
+      "sha256": "2f82c88078973093525a0760de803294f1a998316e3b9e51c24313b4dc6cd95b"
+    },
+    "512/body-lime.webp": {
+      "bytes": 42704,
+      "sha256": "b8fd60e1e0dd820de04dbcd5cc9029ea214891936a16da2b488c0bf91ed5f6cd"
+    },
+    "512/body-ivory.webp": {
+      "bytes": 42750,
+      "sha256": "43250d36e3417faa8a3d3faed89ffe9ac3783f7e552a253d79a42f53bff7a2bb"
+    },
+    "512/body-slate.webp": {
+      "bytes": 41526,
+      "sha256": "fbea9b33df64f1f56b14d1d2f286d38977b6dfe8ac1212483989f2cbc1bbf851"
+    },
+    "512/axe.webp": {
+      "bytes": 14870,
+      "sha256": "7d343069be33da8cbf28ffdd10b6444228ec6b2f6d3561f4b1df5d3c5a71f037"
+    },
+    "512/shield.webp": {
+      "bytes": 35000,
+      "sha256": "97dad4457b9934abb66cdd35ef3e3512f1c027b933dfe1744da1b93ba8f3fb9c"
+    }
+  }
+}

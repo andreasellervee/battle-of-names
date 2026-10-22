@@ -30,3 +30,7 @@ coverage/
 *.tmp
 *.temp
 
+
+# Optional asset-authoring environment
+.venv-assets/
+__pycache__/
